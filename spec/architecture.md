@@ -73,8 +73,12 @@ flowchart TB
 
 ## Repository layout (monorepo)
 
+**Bun workspaces** at the repo root (`package.json` → `"workspaces": ["packages/*"]`). CI and local dev use `bun install` / `bun run` / `bun test` only.
+
 ```
 zox/
+  package.json       # workspaces, scripts, catalog deps
+  bun.lock
   packages/
     contracts/     # Shared types, OpenAPI-generated types, event schemas (Zod)
     core/          # Agent loop, agents, permissions, compaction orchestration
@@ -96,6 +100,8 @@ zox/
 ```
 
 **Package dependency rule:** `cli` and `sdk` depend on `contracts` + HTTP only at runtime; they do not import `core` internals directly. Integration tests may import `server` in-process.
+
+**Publishing:** `zox` and `@zox/*` are built with `bun build` / `tsc` as needed and released with **`bun publish`** to the npm registry. Consumers install/run with **`bunx zox`** (or any npm-compatible client). Develop, test, and ship entirely on Bun.
 
 ## Core subsystems
 

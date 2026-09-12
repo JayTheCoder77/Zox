@@ -142,7 +142,7 @@ Capstone compares harnesses on **pass@1**, **turns-per-task**, **$/task**:
 
 ## Testing
 
-- In-memory OTel exporter in vitest; assert span names and token attributes on fake provider.
+- In-memory OTel exporter in `bun test`; assert span names and token attributes on fake provider.
 - Snapshot Prometheus text format for one synthetic turn.
 
 ## Related

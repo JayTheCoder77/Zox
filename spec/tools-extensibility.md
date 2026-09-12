@@ -44,8 +44,8 @@ All mutating and subprocess tools: **permission → verification gate → [PreTo
   "mcp": {
     "servers": {
       "github": {
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "command": "bunx",
+        "args": ["@modelcontextprotocol/server-github"],
         "env": { "GITHUB_TOKEN": "${GITHUB_TOKEN}" }
       }
     }
@@ -127,7 +127,7 @@ Ruleset format (JSON):
 
 ```json
 {
-  "bash": { "default": "ask", "allow": ["npm test", "git status*"] },
+  "bash": { "default": "ask", "allow": ["bun test", "git status*"] },
   "write": { "default": "ask" },
   "read": { "default": "allow" }
 }

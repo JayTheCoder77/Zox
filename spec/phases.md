@@ -6,7 +6,7 @@ Option **C** — TUI, headless server, and SDK share one OpenAPI contract; paral
 
 **Exit criteria:** fake provider completes one turn over HTTP; SDK receives SSE deltas.
 
-- [ ] Monorepo scaffold (pnpm, TypeScript, vitest)
+- [ ] Monorepo scaffold (Bun workspaces, TypeScript, `bun test`)
 - [ ] `@zox/contracts` — Zod event schemas + OpenAPI stub
 - [ ] `@zox/providers` — one real provider (OpenAI or Anthropic) + mock provider
 - [ ] `@zox/core` — minimal loop (no tools)

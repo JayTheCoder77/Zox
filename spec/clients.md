@@ -27,7 +27,7 @@ Embedded and headless must behave identically aside from networking.
 
 ### TUI (`packages/tui` or subfolder)
 
-Recommended stack: **OpenTUI** or **ink** (decision in implementation plan). Requirements:
+Recommended stack: **Ink 5** on Bun (capstone-aligned); evaluate OpenTUI if needed. Requirements:
 
 - Scrollable transcript with tool result folding.
 - Status bar: model, agent, cwd, **session token usage**.
@@ -87,7 +87,7 @@ const usage = await session.getUsage();
 - Generated types from OpenAPI (optional `openapi-typescript`).
 - SSE parser with reconnect + `Last-Event-ID` (v1.1).
 - Helpers: `waitForIdle()`, `collectText()`, `onTool()`.
-- No Node-only APIs in core client (works in Bun; browser optional later).
+- **Bun-first** runtime for CLI, server, and SDK; avoid Node-only APIs in shared code (Node compatibility optional later for `@zox/sdk` consumers).
 
 ## Parallel development (option C)
 

@@ -1,6 +1,6 @@
 # Zox specification
 
-Zox is an npm-distributed coding agent harness (OpenCode-inspired): BYOK providers, strong context management, MCP, user skills, slash commands, and a client/server architecture with a terminal UI and programmatic SDK.
+Zox is a **Bun-first** monorepo and an npm-publishable coding agent harness (OpenCode-inspired): BYOK providers, strong context management, MCP, user skills, slash commands, and a client/server architecture with a terminal UI and programmatic SDK.
 
 ## Documents
 
@@ -29,6 +29,7 @@ Inspired by [Capstone 01 — Terminal-Native Coding Agent](https://aiengineering
 
 ## Conventions
 
+- **Runtime and toolchain:** [Bun](https://bun.sh) — `bun install`, `bun run`, `bun test`, `bun publish`, `bunx`; monorepo via `workspaces` in root `package.json`. No pnpm/npm CLI in the repo; releases go to the npm registry via **`bun publish`**.
 - **Stable contracts** live in OpenAPI (`packages/server/openapi`) and TypeScript types shared via `@zox/contracts`.
 - **Secrets** never persist in session DB or logs; config references env var names or keychain handles.
 - **Server is source of truth** for sessions, permissions, and tool execution; clients are thin.
