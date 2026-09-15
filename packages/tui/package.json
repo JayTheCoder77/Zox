@@ -1,22 +1,20 @@
 {
-  "name": "@zox/cli",
+  "name": "@zox/tui",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "bin": {
-    "zox": "./src/index.ts"
-  },
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.tsx"
   },
   "dependencies": {
-    "@zox/hooks": "workspace:*",
+    "@zox/contracts": "workspace:*",
     "@zox/sdk": "workspace:*",
-    "@zox/server": "workspace:*",
-    "@zox/tui": "workspace:*"
+    "ink": "catalog:",
+    "react": "catalog:"
   },
   "devDependencies": {
     "@types/bun": "1.4.2",
+    "@types/react": "catalog:",
     "typescript": "catalog:"
   }
 }
