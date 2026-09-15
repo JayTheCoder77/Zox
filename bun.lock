@@ -53,6 +53,17 @@
         "typescript": "catalog:",
       },
     },
+    "packages/mcp": {
+      "name": "@zox/mcp",
+      "version": "0.0.0",
+      "dependencies": {
+        "@zox/tools": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "1.4.2",
+        "typescript": "catalog:",
+      },
+    },
     "packages/memory": {
       "name": "@zox/memory",
       "version": "0.0.0",
@@ -192,6 +203,8 @@
     "@zox/core": ["@zox/core@workspace:packages/core"],
 
     "@zox/hooks": ["@zox/hooks@workspace:packages/hooks"],
+
+    "@zox/mcp": ["@zox/mcp@workspace:packages/mcp"],
 
     "@zox/memory": ["@zox/memory@workspace:packages/memory"],
 
