@@ -3,6 +3,7 @@ import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createBuiltinTools } from "./builtins.ts";
+import { createGrepTool } from "./grep.ts";
 import { ToolRegistry } from "./registry.ts";
 import type { ToolContext, ZoxTool } from "./types.ts";
 
@@ -105,5 +106,55 @@ describe("subprocess tools", () => {
       );
       expect(result.denied).toBe(true);
     }
+  });
+
+  test("fallback grep jails every glob candidate", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "zox-grep-jail-"));
+    const root = join(parent, "root");
+    const outside = join(parent, "outside");
+    await mkdir(root);
+    await mkdir(outside);
+    await Bun.write(join(outside, "secret.txt"), "outside-secret\n");
+
+    const result = await createGrepTool(() => null).execute(
+      { pattern: "outside-secret", glob: "../outside/**" },
+      ctx(root),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.content).toBe("");
+  });
+
+  test("fallback grep uses JavaScript regular expressions", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-grep-regex-"));
+    await Bun.write(join(root, "values.txt"), "value-123\nvalue-abc\n");
+    const grep = createGrepTool(() => null);
+
+    const result = await grep.execute(
+      { pattern: String.raw`value-\d+` },
+      ctx(root),
+    );
+    const invalid = await grep.execute({ pattern: "[" }, ctx(root));
+
+    expect(result.ok).toBe(true);
+    expect(result.content).toContain("value-123");
+    expect(result.content).not.toContain("value-abc");
+    expect(invalid.ok).toBe(false);
+    expect(invalid.content).toContain("Invalid regular expression");
+  });
+
+  test("grep returns truncated rg stdout despite a nonzero exit", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-grep-rg-cap-"));
+    await Bun.write(join(root, "many.txt"), "match\n".repeat(60_000));
+
+    const result = await requiredTool(registryWithBuiltins(), "grep").execute(
+      { pattern: "match" },
+      ctx(root, 300_000),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.truncated).toBe(true);
+    expect(result.content).toContain("many.txt:1:match");
+    expect(result.content).not.toContain("Search failed");
   });
 });
