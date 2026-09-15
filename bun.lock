@@ -45,6 +45,14 @@
         "typescript": "catalog:",
       },
     },
+    "packages/sandbox": {
+      "name": "@zox/sandbox",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@types/bun": "1.4.2",
+        "typescript": "catalog:",
+      },
+    },
     "packages/sdk": {
       "name": "@zox/sdk",
       "version": "0.0.0",
@@ -67,6 +75,17 @@
         "@zox/core": "workspace:*",
         "@zox/providers": "workspace:*",
         "hono": "catalog:",
+      },
+      "devDependencies": {
+        "@types/bun": "1.4.2",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/tools": {
+      "name": "@zox/tools",
+      "version": "0.0.0",
+      "dependencies": {
+        "@zox/sandbox": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "1.4.2",
@@ -125,9 +144,13 @@
 
     "@zox/providers": ["@zox/providers@workspace:packages/providers"],
 
+    "@zox/sandbox": ["@zox/sandbox@workspace:packages/sandbox"],
+
     "@zox/sdk": ["@zox/sdk@workspace:packages/sdk"],
 
     "@zox/server": ["@zox/server@workspace:packages/server"],
+
+    "@zox/tools": ["@zox/tools@workspace:packages/tools"],
 
     "ai": ["ai@7.0.101", "", { "dependencies": { "@ai-sdk/gateway": "4.0.81", "@ai-sdk/provider": "4.0.14", "@ai-sdk/provider-utils": "5.0.40" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-EOhih2g2Gu6TJdnkBojXORtNT6oZ6J4YeVeJhZXFO384ONLdXpPa+VPH183IMpSB8SkswQHTYRRoZ1tt+9Jt3Q=="],
 

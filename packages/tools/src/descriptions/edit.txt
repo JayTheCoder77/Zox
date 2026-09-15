@@ -1,0 +1,1 @@
+Replace exactly one occurrence of an exact string in a UTF-8 text file inside the sandbox, failing when the string is absent or ambiguous.
