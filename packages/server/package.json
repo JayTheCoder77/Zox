@@ -7,9 +7,17 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@zox/context": "workspace:*",
     "@zox/contracts": "workspace:*",
     "@zox/core": "workspace:*",
+    "@zox/hooks": "workspace:*",
+    "@zox/mcp": "workspace:*",
+    "@zox/memory": "workspace:*",
+    "@zox/observability": "workspace:*",
     "@zox/providers": "workspace:*",
+    "@zox/sandbox": "workspace:*",
+    "@zox/session": "workspace:*",
+    "@zox/skills": "workspace:*",
     "@zox/tools": "workspace:*",
     "hono": "catalog:"
   },

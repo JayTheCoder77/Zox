@@ -19,6 +19,27 @@ describe("openapi stub", () => {
     expect(yaml).toContain("/sessions/{id}/events:");
   });
 
+  test("includes Phase 1 path keys", () => {
+    const paths = [
+      "/sessions/{id}/cancel",
+      "/sessions/{id}/permissions/{requestId}",
+      "/models",
+      "/usage",
+      "/config",
+      "/mcp/servers",
+      "/mcp/servers/{name}",
+      "/metrics",
+      "/hooks",
+      "/sessions/{id}/compact",
+      "/sessions/{id}/commands",
+      "/sessions/{id}/close",
+      "/sessions/{id}/memory",
+    ];
+    for (const path of paths) {
+      expect(yaml).toContain(`${path}:`);
+    }
+  });
+
   test("uses Bearer auth", () => {
     expect(yaml).toContain("bearerAuth:");
     expect(yaml).toContain("Bearer");
