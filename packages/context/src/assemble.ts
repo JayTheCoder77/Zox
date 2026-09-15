@@ -11,17 +11,34 @@ export function assembleProviderMessages<T extends ProviderMessage>(session: {
   messages: T[];
   compactions?: CompactResult[];
   skillBodies?: string[];
+  priorStateMarkdown?: string;
+  systemNotes?: string[];
 }): T[] {
   const assembled = assembleHistory(session);
-  if (!session.skillBodies?.length) {
-    return assembled;
+  const prefixes: T[] = [];
+  if (session.priorStateMarkdown?.trim()) {
+    prefixes.push({
+      id: "prior-state",
+      role: "system",
+      content: session.priorStateMarkdown,
+    } as T);
   }
-  const notes = {
-    id: "skill:active",
-    role: "system",
-    content: session.skillBodies.join("\n\n"),
-  } as T;
-  return [notes, ...assembled];
+  if (session.systemNotes?.length) {
+    prefixes.push({
+      id: "hook:notes",
+      role: "system",
+      content: session.systemNotes.join("\n\n"),
+    } as T);
+  }
+  if (session.skillBodies?.length) {
+    prefixes.push({
+      id: "skill:active",
+      role: "system",
+      content: session.skillBodies.join("\n\n"),
+    } as T);
+  }
+  if (prefixes.length === 0) return assembled;
+  return [...prefixes, ...assembled];
 }
 
 function assembleHistory<T extends ProviderMessage>(session: {

@@ -41,6 +41,7 @@ type SessionRow = {
   sandbox_mode: string;
   plan_json: string | null;
   prior_state_markdown: string | null;
+  system_notes: string | null;
   last_trace_id: string | null;
   window_warned: number | null;
   usage_input_tokens: number;
@@ -165,6 +166,12 @@ export class SqliteSessionStore implements SessionStore {
     if (row.prior_state_markdown !== null) {
       session.priorStateMarkdown = row.prior_state_markdown;
     }
+    if (row.system_notes) {
+      const parsed: unknown = JSON.parse(row.system_notes);
+      if (Array.isArray(parsed)) {
+        session.systemNotes = parsed.filter((n) => typeof n === "string");
+      }
+    }
     if (compactionRows.length > 0) {
       session.compactions = compactionRows.map((c) => ({
         fromMessageId: c.from_message_id,
@@ -182,9 +189,9 @@ export class SqliteSessionStore implements SessionStore {
         .query(
           `INSERT INTO sessions (
             id, workspace_root, agent, model, status, sandbox_root, sandbox_mode,
-            plan_json, prior_state_markdown, last_trace_id, window_warned,
+            plan_json, prior_state_markdown, system_notes, last_trace_id, window_warned,
             usage_input_tokens, usage_output_tokens, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET
             workspace_root = excluded.workspace_root,
             agent = excluded.agent,
@@ -194,6 +201,7 @@ export class SqliteSessionStore implements SessionStore {
             sandbox_mode = excluded.sandbox_mode,
             plan_json = excluded.plan_json,
             prior_state_markdown = excluded.prior_state_markdown,
+            system_notes = excluded.system_notes,
             last_trace_id = excluded.last_trace_id,
             window_warned = excluded.window_warned,
             usage_input_tokens = excluded.usage_input_tokens,
@@ -209,6 +217,9 @@ export class SqliteSessionStore implements SessionStore {
           session.sandboxMode,
           session.planJson ? JSON.stringify(session.planJson) : null,
           session.priorStateMarkdown ?? null,
+          session.systemNotes?.length
+            ? JSON.stringify(session.systemNotes)
+            : null,
           session.lastTraceId ?? null,
           session.windowWarned === undefined
             ? null

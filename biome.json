@@ -3,6 +3,12 @@
   "linter": { "enabled": true },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2 },
   "files": {
-    "includes": ["packages/**", "*.json", "!!**/node_modules", "!!**/bun.lock"]
+    "includes": [
+      "packages/**",
+      "*.json",
+      "!!**/node_modules",
+      "!!**/bun.lock",
+      "!!**/.zox"
+    ]
   }
 }

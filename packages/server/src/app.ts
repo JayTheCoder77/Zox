@@ -19,7 +19,11 @@ import { McpPool } from "@zox/mcp";
 import { autoSummarize } from "@zox/memory";
 import type { Observability } from "@zox/observability";
 import type { createProviderRouter } from "@zox/providers";
-import { DEFAULT_SANDBOX_CONFIG, ensureWorktree } from "@zox/sandbox";
+import {
+  DEFAULT_SANDBOX_CONFIG,
+  ensureWorktree,
+  removeWorktree,
+} from "@zox/sandbox";
 import { findSkill } from "@zox/skills";
 import { createBuiltinTools, ToolRegistry } from "@zox/tools";
 import { Hono } from "hono";
@@ -36,8 +40,13 @@ export type AppConfig = {
   sandbox?: { mode: "host" | "worktree" | "container" | "remote" };
   providers?: Record<string, Record<string, unknown>>;
   memory?: { autoSummarize?: boolean };
-  observability?: { metrics?: boolean | { public?: boolean } };
+  observability?: {
+    metrics?: boolean | { public?: boolean };
+    recordContent?: boolean;
+  };
+  skills?: { autoLoad?: string[]; loadPaths?: string[] };
   hooks?: HooksFile;
+  worktreeCleanup?: "keep" | "remove";
 };
 
 const MODEL_CATALOG = [
@@ -75,6 +84,7 @@ export function createApp(opts: {
   config?: AppConfig;
   summarize?: SessionSummarizer;
   adapterIds?: string[];
+  workspaceRoot?: string;
 }): Hono {
   const bus = new SessionEventBus();
   const app = new Hono();
@@ -85,7 +95,7 @@ export function createApp(opts: {
     agent: "build",
     ...opts.config,
     sandbox: {
-      mode: opts.config?.sandbox?.mode ?? "host",
+      mode: opts.config?.sandbox?.mode ?? DEFAULT_SANDBOX_CONFIG.mode,
     },
     providers: opts.config?.providers,
     hooks: opts.config?.hooks,
@@ -153,12 +163,24 @@ export function createApp(opts: {
         400,
       );
     }
+    const loaded = loadAutoSkills(session.workspaceRoot, config.skills);
+    if (loaded.length > 0) {
+      activeSkills.set(session.id, loaded);
+      session.activeSkills = loaded;
+    }
     opts.store.save(session);
     if (opts.hooks) {
-      await opts.hooks.run("SessionStart", {
+      const start = await opts.hooks.run("SessionStart", {
         matcher: "startup",
         session: { id: session.id, workspaceRoot: session.workspaceRoot },
       });
+      if (start.message?.trim()) {
+        session.systemNotes = [
+          ...(session.systemNotes ?? []),
+          start.message.trim(),
+        ];
+        opts.store.save(session);
+      }
     }
     return c.json(sessionPayload(session), 201);
   });
@@ -312,6 +334,21 @@ export function createApp(opts: {
       recentTexts,
       summarize,
     });
+    if (session.sandboxMode === "worktree") {
+      await removeWorktree({
+        workspaceRoot: session.workspaceRoot,
+        sessionId: session.id,
+        config: {
+          ...DEFAULT_SANDBOX_CONFIG,
+          mode: "worktree",
+          worktree: {
+            ...DEFAULT_SANDBOX_CONFIG.worktree,
+            cleanup: config.worktreeCleanup ?? "keep",
+          },
+        },
+      });
+    }
+    activeSkills.delete(session.id);
     opts.store.save(session);
     return c.json({ ok: true });
   });
@@ -541,6 +578,8 @@ export function createApp(opts: {
           model: event.model,
           inputTokens: event.inputTokens,
           outputTokens: event.outputTokens,
+          cacheReadTokens: event.cacheReadTokens,
+          cacheWriteTokens: event.cacheWriteTokens,
           durationMs: event.durationMs,
         });
       }
@@ -593,6 +632,12 @@ export function createApp(opts: {
       case "clear":
         session.messages = [];
         session.compactions = [];
+        session.planJson = null;
+        session.priorStateMarkdown = undefined;
+        session.systemNotes = [];
+        session.usage = { inputTokens: 0, outputTokens: 0 };
+        activeSkills.delete(session.id);
+        session.activeSkills = [];
         opts.store.save(session);
         return { ok: true };
       case "mcp":
@@ -721,6 +766,21 @@ function metricsPublic(config: AppConfig): boolean {
   return (
     typeof metrics === "object" && metrics !== null && metrics.public === true
   );
+}
+
+function loadAutoSkills(
+  workspaceRoot: string,
+  skills?: AppConfig["skills"],
+): Array<{ name: string; body: string }> {
+  const loaded: Array<{ name: string; body: string }> = [];
+  for (const name of skills?.autoLoad ?? []) {
+    const skill = findSkill(name, {
+      workspaceRoot,
+      loadPaths: skills?.loadPaths,
+    });
+    if (skill) loaded.push({ name: skill.name, body: skill.body });
+  }
+  return loaded;
 }
 
 function metricsClientIsLocal(c: {

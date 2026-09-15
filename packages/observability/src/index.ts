@@ -1,5 +1,10 @@
 import { createMetrics, type ZoxMetrics } from "./metrics.ts";
-import { disabledTraceId, startTurnSpan, tracingEnabled } from "./traces.ts";
+import {
+  disabledTraceId,
+  startTurnSpan,
+  tracingEnabled,
+  withToolSpan,
+} from "./traces.ts";
 
 export type { ZoxMetrics };
 
@@ -12,6 +17,7 @@ export type Observability = {
   recordCompaction(kind: "manual" | "auto"): void;
   recordSessionCost(usd: number): void;
   recordHookDuration(event: string, seconds: number): void;
+  withTool<T>(name: string, fn: () => Promise<T>): Promise<T>;
   renderPrometheus(): string;
 };
 
@@ -58,6 +64,12 @@ export function createObservability(opts: {
     },
     recordHookDuration(event: string, seconds: number) {
       metrics.observeHookDuration(event, seconds);
+    },
+    async withTool<T>(name: string, fn: () => Promise<T>): Promise<T> {
+      if (!tracingEnabled(opts.enabled)) {
+        return fn();
+      }
+      return withToolSpan(name, fn);
     },
     renderPrometheus() {
       return metrics.renderPrometheus();

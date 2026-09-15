@@ -35,8 +35,25 @@ export async function* compactSessionTurn(opts: {
 
   if (!session.compactions) session.compactions = [];
   session.compactions.push(compact);
+  session.priorStateMarkdown = compact.summary;
 
   if (opts.hooks) {
+    const compactStart = await opts.hooks.run("SessionStart", {
+      matcher: "compact",
+      session: {
+        id: session.id,
+        workspaceRoot: session.workspaceRoot,
+      },
+    });
+    if (compactStart.message?.trim()) {
+      session.priorStateMarkdown = [
+        session.priorStateMarkdown,
+        compactStart.message.trim(),
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+    }
+
     await opts.hooks.run("PostCompact", {
       session: {
         id: session.id,

@@ -13,7 +13,7 @@ async function main(): Promise<void> {
   }
 
   if (positionals[0] === "serve") {
-    runServe(flags);
+    await runServe(flags);
     return;
   }
 

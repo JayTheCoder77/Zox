@@ -8,4 +8,4 @@ export { type JailResult, jailPath } from "./jail.ts";
 export { runSandboxed } from "./subprocess.ts";
 export { truncateUtf8 } from "./truncate.ts";
 export type { SandboxConfig, ToolExecutionResult } from "./types.ts";
-export { ensureWorktree, worktreeRoot } from "./worktree.ts";
+export { ensureWorktree, removeWorktree, worktreeRoot } from "./worktree.ts";

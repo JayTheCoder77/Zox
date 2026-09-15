@@ -3,6 +3,11 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
+  adaptersFromConfig,
+  loadZoxConfig,
+  resolveMcpServerEnv,
+} from "@zox/config";
+import {
   createHookRunner,
   defaultTrustStorePath,
   type HooksFile,
@@ -10,30 +15,22 @@ import {
 } from "@zox/hooks";
 import { McpPool } from "@zox/mcp";
 import { createObservability } from "@zox/observability";
-import {
-  createAnthropicAdapter,
-  createGoogleAdapter,
-  createMockAdapter,
-  createOpenAIAdapter,
-  createOpenAICompatibleAdapter,
-  createProviderRouter,
-  type ProviderAdapter,
-} from "@zox/providers";
+import { createProviderRouter } from "@zox/providers";
 import { DEFAULT_SANDBOX_CONFIG } from "@zox/sandbox";
 import { SqliteSessionStore } from "@zox/session";
 import { createBuiltinTools, ToolRegistry } from "@zox/tools";
-import { type AppConfig, createApp } from "./app.ts";
+import { createApp } from "./app.ts";
 
 export type { AppConfig, AppRouter } from "./app.ts";
 export { createApp } from "./app.ts";
 
-export function listen(opts?: {
+export async function listen(opts?: {
   port?: number;
   hostname?: string;
   token?: string;
   trustStorePath?: string;
   sandboxMode?: "host" | "worktree" | "container" | "remote";
-}): { port: number; stop(): void } {
+}): Promise<{ port: number; stop(): void }> {
   const fromEnv = process.env.ZOXX_SERVER_TOKEN;
   const token = opts?.token ?? fromEnv ?? crypto.randomUUID();
   if (opts?.token ?? fromEnv) {
@@ -43,31 +40,60 @@ export function listen(opts?: {
   }
 
   const cwd = process.cwd();
-  const { adapters, config } = adaptersFromEnv();
+  const zoxConfig = loadZoxConfig(cwd);
+  const { adapters, providerMeta } = adaptersFromConfig(zoxConfig);
   const tools = new ToolRegistry();
   for (const tool of createBuiltinTools()) tools.register(tool);
+  const mcp = new McpPool();
+  await registerMcpFromConfig(mcp, tools, zoxConfig);
+
   const metricsEnabled = process.env.ZOXX_OBSERVABILITY !== "0";
+  const autoSummarize =
+    zoxConfig.memory?.autoSummarize ??
+    !(
+      process.env.ZOXX_MEMORY_AUTO_SUMMARIZE === "0" ||
+      process.env.ZOXX_MEMORY_AUTO_SUMMARIZE === "false"
+    );
+
   const projectTrusted = isProjectTrustedSync(cwd, opts?.trustStorePath);
   const hookFiles = loadHookFiles(cwd, projectTrusted);
+  const observability = createObservability({
+    enabled: metricsEnabled,
+    recordContent: zoxConfig.observability?.recordContent ?? false,
+  });
   const hooks = createHookRunner({
     files: hookFiles,
     cwd,
+    onDuration: (event, seconds) => {
+      observability.recordHookDuration(event, seconds);
+    },
   });
+
+  const sandboxMode =
+    opts?.sandboxMode ?? zoxConfig.sandbox?.mode ?? DEFAULT_SANDBOX_CONFIG.mode;
+
   const app = createApp({
     token,
     store: new SqliteSessionStore({ workspaceRoot: cwd }),
     router: createProviderRouter({ adapters }),
     tools,
-    mcp: new McpPool(),
+    mcp,
     hooks,
-    observability: createObservability({ enabled: metricsEnabled }),
+    observability,
     adapterIds: adapters.map((adapter) => adapter.id),
+    workspaceRoot: cwd,
     config: {
-      ...config,
-      sandbox: { mode: opts?.sandboxMode ?? DEFAULT_SANDBOX_CONFIG.mode },
-      observability: { metrics: metricsEnabled },
-      memory: { autoSummarize: true },
+      model: zoxConfig.model ?? "mock/echo",
+      agent: zoxConfig.agent ?? "build",
+      providers: providerMeta,
+      sandbox: { mode: sandboxMode },
+      observability: zoxConfig.observability ?? { metrics: metricsEnabled },
+      memory: { autoSummarize },
+      skills: zoxConfig.skills,
       hooks: hookFiles[0],
+      worktreeCleanup:
+        zoxConfig.sandbox?.worktree?.cleanup ??
+        DEFAULT_SANDBOX_CONFIG.worktree.cleanup,
     },
   });
   const hostname = opts?.hostname ?? "127.0.0.1";
@@ -85,60 +111,21 @@ export function listen(opts?: {
   };
 }
 
-function adaptersFromEnv(): { adapters: ProviderAdapter[]; config: AppConfig } {
-  const adapters: ProviderAdapter[] = [createMockAdapter()];
-  const providers: NonNullable<AppConfig["providers"]> = {};
-
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  if (anthropicKey) {
-    adapters.push(createAnthropicAdapter({ apiKey: anthropicKey }));
-    providers.anthropic = { apiKeyEnv: "ANTHROPIC_API_KEY" };
+async function registerMcpFromConfig(
+  mcp: McpPool,
+  tools: ToolRegistry,
+  zoxConfig: ReturnType<typeof loadZoxConfig>,
+): Promise<void> {
+  for (const [name, spec] of Object.entries(zoxConfig.mcp?.servers ?? {})) {
+    await mcp.add(name, {
+      command: spec.command,
+      args: spec.args,
+      env: resolveMcpServerEnv(spec.env),
+    });
   }
-  const openaiKey = process.env.OPENAI_API_KEY;
-  if (openaiKey) {
-    adapters.push(createOpenAIAdapter({ apiKey: openaiKey }));
-    providers.openai = { apiKeyEnv: "OPENAI_API_KEY" };
+  for (const tool of mcp.asZoxTools()) {
+    tools.register(tool);
   }
-  const googleKey = process.env.GOOGLE_API_KEY ?? process.env.GEMINI_API_KEY;
-  if (googleKey) {
-    adapters.push(createGoogleAdapter({ apiKey: googleKey }));
-    providers.google = {
-      apiKeyEnv: process.env.GOOGLE_API_KEY
-        ? "GOOGLE_API_KEY"
-        : "GEMINI_API_KEY",
-    };
-  }
-  const groqKey = process.env.GROQ_API_KEY;
-  if (groqKey) {
-    adapters.push(
-      createOpenAICompatibleAdapter({
-        id: "groq",
-        apiKey: groqKey,
-        baseURL: "https://api.groq.com/openai/v1",
-      }),
-    );
-    providers.groq = { apiKeyEnv: "GROQ_API_KEY" };
-  }
-  const openrouterKey = process.env.OPENROUTER_API_KEY;
-  if (openrouterKey) {
-    adapters.push(
-      createOpenAICompatibleAdapter({
-        id: "openrouter",
-        apiKey: openrouterKey,
-        baseURL: "https://openrouter.ai/api/v1",
-      }),
-    );
-    providers.openrouter = { apiKeyEnv: "OPENROUTER_API_KEY" };
-  }
-
-  return {
-    adapters,
-    config: {
-      model: "mock/echo",
-      agent: "build",
-      providers,
-    },
-  };
 }
 
 function loadHookFiles(cwd: string, projectTrusted: boolean): HooksFile[] {
