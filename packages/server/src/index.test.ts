@@ -41,7 +41,7 @@ describe("listen", () => {
 
     prevCwd = process.cwd();
     process.chdir(project);
-    const server = listen({
+    const server = await listen({
       port: 0,
       token: "hook-test-token",
       trustStorePath: storePath,

@@ -43,6 +43,7 @@ export type StoredSession = {
   messages: StoredMessage[];
   compactions?: CompactResult[];
   activeSkills?: Array<{ name: string; body: string }>;
+  systemNotes?: string[];
 };
 
 export type CreateSessionInput = CreateSessionRequest & {

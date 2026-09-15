@@ -4,14 +4,24 @@ import { createMockAdapter, createProviderRouter } from "@zox/providers";
 import { createApp } from "@zox/server";
 import { createZoxClient } from "./client.ts";
 
+function testApp(overrides: Partial<Parameters<typeof createApp>[0]> = {}) {
+  const { config: overrideConfig, ...rest } = overrides;
+  return createApp({
+    token: "sdk-token",
+    store: new MemorySessionStore(),
+    router: createProviderRouter({ adapters: [createMockAdapter()] }),
+    ...rest,
+    config: {
+      sandbox: { mode: "host" },
+      ...overrideConfig,
+    },
+  });
+}
+
 describe("createZoxClient", () => {
   test("receives mock message.delta over SSE", async () => {
     const token = "sdk-token";
-    const hono = createApp({
-      token,
-      store: new MemorySessionStore(),
-      router: createProviderRouter({ adapters: [createMockAdapter()] }),
-    });
+    const hono = testApp({ token });
     const server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
@@ -37,11 +47,7 @@ describe("createZoxClient", () => {
 
   test("second send() streams only the new turn deltas", async () => {
     const token = "sdk-token";
-    const hono = createApp({
-      token,
-      store: new MemorySessionStore(),
-      router: createProviderRouter({ adapters: [createMockAdapter()] }),
-    });
+    const hono = testApp({ token });
     const server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
@@ -70,11 +76,7 @@ describe("createZoxClient", () => {
 
   test("getUsage, command usage, and close after a turn", async () => {
     const token = "sdk-token";
-    const hono = createApp({
-      token,
-      store: new MemorySessionStore(),
-      router: createProviderRouter({ adapters: [createMockAdapter()] }),
-    });
+    const hono = testApp({ token });
     const server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
@@ -109,10 +111,8 @@ describe("createZoxClient", () => {
 
   test("compact returns without error", async () => {
     const token = "sdk-token";
-    const hono = createApp({
+    const hono = testApp({
       token,
-      store: new MemorySessionStore(),
-      router: createProviderRouter({ adapters: [createMockAdapter()] }),
       summarize: async () => "SUM",
     });
     const server = Bun.serve({
@@ -142,11 +142,7 @@ describe("createZoxClient", () => {
 
   test("models.list returns catalog", async () => {
     const token = "sdk-token";
-    const hono = createApp({
-      token,
-      store: new MemorySessionStore(),
-      router: createProviderRouter({ adapters: [createMockAdapter()] }),
-    });
+    const hono = testApp({ token });
     const server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,

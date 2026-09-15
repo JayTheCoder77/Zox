@@ -415,6 +415,46 @@ describe("runTurn", () => {
     ).toBe(true);
   });
 
+  test("stops with tool_loop_limit after 20 tool rounds", async () => {
+    let n = 0;
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* () {
+            n += 1;
+            yield {
+              type: "tool-call",
+              id: `tc${n}`,
+              name: "read",
+              arguments: { path: "a.ts" },
+            };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const root = await mkdtemp(join(tmpdir(), "zox-loop-limit-"));
+    await Bun.write(join(root, "a.ts"), "x");
+    const tools = new ToolRegistry();
+    for (const t of createBuiltinTools()) tools.register(t);
+    const sess = session();
+    sess.workspaceRoot = root;
+    sess.sandboxRoot = root;
+    const events = [];
+    for await (const e of runTurn({
+      session: sess,
+      userContent: "loop",
+      router,
+      tools,
+    })) {
+      events.push(e);
+    }
+    expect(
+      events.some((e) => e.type === "error" && e.code === "tool_loop_limit"),
+    ).toBe(true);
+  });
+
   test("includes injected skill bodies in provider-facing messages", async () => {
     let providerMessages: Array<{ role: string; content: string }> = [];
     const router = createProviderRouter({

@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@zox/context": "workspace:*",
+    "@zox/config": "workspace:*",
     "@zox/contracts": "workspace:*",
     "@zox/core": "workspace:*",
     "@zox/hooks": "workspace:*",

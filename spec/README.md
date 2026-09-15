@@ -39,4 +39,4 @@ Inspired by [Capstone 01 — Terminal-Native Coding Agent](https://aiengineering
 | Area | Status |
 |------|--------|
 | Architecture | Draft — v0.2 |
-| Implementation | Not started |
+| Implementation | Phase 1 MVP landed |

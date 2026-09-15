@@ -201,7 +201,7 @@ describe("SqliteSessionStore schema_migrations", () => {
       )
       .all()
       .map((row) => row.version);
-    expect(versions).toEqual([1]);
+    expect(versions).toEqual([1, 2]);
     expect(store.db).toBeInstanceOf(Database);
   });
 });

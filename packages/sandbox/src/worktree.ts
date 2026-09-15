@@ -94,6 +94,32 @@ export async function ensureWorktree(opts: {
   return { root: jailedRoot.path, mode: "worktree" };
 }
 
+export async function removeWorktree(opts: {
+  workspaceRoot: string;
+  sessionId: string;
+  config: SandboxConfig;
+}): Promise<void> {
+  if (opts.config.mode !== "worktree") return;
+  if (opts.config.worktree.cleanup !== "remove") return;
+
+  const root = worktreeRoot(
+    opts.workspaceRoot,
+    opts.sessionId,
+    opts.config.worktree.path,
+  );
+  const branch = `${opts.config.worktree.branchPrefix}${opts.sessionId}`;
+  const remove = Bun.spawn(
+    ["git", "-C", opts.workspaceRoot, "worktree", "remove", "--force", root],
+    { stdout: "ignore", stderr: "ignore" },
+  );
+  await remove.exited;
+  const deleteBranch = Bun.spawn(
+    ["git", "-C", opts.workspaceRoot, "branch", "-D", branch],
+    { stdout: "ignore", stderr: "ignore" },
+  );
+  await deleteBranch.exited;
+}
+
 function assertSafeRelative(value: string, label: string): void {
   if (
     isAbsolute(value) ||

@@ -24,6 +24,7 @@ export type RunHooksOpts = {
   trusted?: boolean;
   cwd: string;
   onError?: "warn" | "deny";
+  onDuration?: (event: HookEvent, seconds: number) => void;
 };
 
 export function loadHooksFile(path: string): HooksFile {
@@ -62,7 +63,9 @@ export async function runHooks(opts: RunHooksOpts): Promise<HookOutput> {
     const entries = file.hooks[opts.event] ?? [];
     for (const entry of entries) {
       if (!matcherHits(entry.matcher, opts.matchValue)) continue;
+      const hookStarted = performance.now();
       const next = await runCommandHook(entry, opts.input, opts.cwd, onError);
+      opts.onDuration?.(opts.event, (performance.now() - hookStarted) / 1000);
       const normalized = normalizeDecision(opts.event, next);
       if (normalized.updatedInput) {
         output = { ...normalized, updatedInput: normalized.updatedInput };
@@ -83,6 +86,7 @@ export function createHookRunner(opts: {
   trusted?: boolean;
   cwd: string;
   onError?: "warn" | "deny";
+  onDuration?: (event: HookEvent, seconds: number) => void;
 }): {
   run(event: string, payload: unknown): Promise<HookOutput>;
 } {
@@ -98,6 +102,7 @@ export function createHookRunner(opts: {
         trusted: opts.trusted,
         cwd: opts.cwd,
         onError: opts.onError,
+        onDuration: opts.onDuration,
       });
     },
   };

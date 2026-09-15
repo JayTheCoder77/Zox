@@ -3,7 +3,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 const stop = mock(() => {});
 
 mock.module("@zox/server", () => ({
-  listen() {
+  async listen() {
     return { port: 18787, stop };
   },
 }));

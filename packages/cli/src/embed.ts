@@ -12,7 +12,7 @@ export async function runEmbed(flags: CliFlags): Promise<void> {
 
   if (!baseUrl) {
     token = token ?? crypto.randomUUID();
-    server = listen({
+    server = await listen({
       hostname: "127.0.0.1",
       port: flags.port ?? 8787,
       sandboxMode: flags.sandbox,

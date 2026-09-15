@@ -17,12 +17,17 @@ function app(
 ) {
   const tools = new ToolRegistry();
   for (const tool of createBuiltinTools()) tools.register(tool);
+  const { config: overrideConfig, ...rest } = overrides;
   return createApp({
     token,
     store: new MemorySessionStore(),
     router: createProviderRouter({ adapters: [createMockAdapter()] }),
     tools,
-    ...overrides,
+    ...rest,
+    config: {
+      sandbox: { mode: "host" },
+      ...overrideConfig,
+    },
   });
 }
 
@@ -227,6 +232,7 @@ describe("createApp", () => {
       token,
       store: new MemorySessionStore(),
       tools,
+      config: { sandbox: { mode: "host" } },
       router: createProviderRouter({
         adapters: [
           createMockAdapter({

@@ -48,6 +48,9 @@ export type TurnObservability = {
   startTurn(): { end(): void; traceId: string };
   recordTool(name: string, denied: boolean): void;
   recordTokens(provider: string, input: number, output: number): void;
+  recordModelLatency?(seconds: number): void;
+  recordContextEstimated?(tokens: number): void;
+  withTool?<T>(name: string, fn: () => Promise<T>): Promise<T>;
 };
 
 export async function* runTurn(opts: {
@@ -68,6 +71,9 @@ export async function* runTurn(opts: {
 }): AsyncIterable<ZoxEvent> {
   const turnObs = opts.observability?.startTurn();
   try {
+    if (turnObs) {
+      opts.session.lastTraceId = turnObs.traceId;
+    }
     yield* runTurnBody(opts);
   } finally {
     turnObs?.end();
@@ -127,9 +133,12 @@ async function* runTurnBody(opts: {
       };
       return;
     }
+    if (promptHook.message?.trim()) {
+      appendSystemNote(opts.session, promptHook.message.trim());
+    }
   }
 
-  yield* emitContextWarnings(opts.session, opts.context);
+  yield* emitContextWarnings(opts.session, opts.context, opts.observability);
 
   const profile = getAgentProfile(opts.session.agent);
   const toolSchemas = opts.tools
@@ -144,6 +153,8 @@ async function* runTurnBody(opts: {
   let finalText = "";
   let inputTokens = 0;
   let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let cacheWriteTokens = 0;
   const started = Date.now();
   let toolIterations = 0;
   let stopForced = false;
@@ -155,6 +166,7 @@ async function* runTurnBody(opts: {
         router: opts.router,
         messageId,
         tools: toolSchemas.length > 0 ? toolSchemas : undefined,
+        observability: opts.observability,
       });
 
       if (round.kind === "error") {
@@ -174,6 +186,8 @@ async function* runTurnBody(opts: {
 
       inputTokens += round.inputTokens;
       outputTokens += round.outputTokens;
+      cacheReadTokens += round.cacheReadTokens;
+      cacheWriteTokens += round.cacheWriteTokens;
       finalText = round.text;
 
       if (round.toolCalls.length === 0) {
@@ -250,6 +264,8 @@ async function* runTurnBody(opts: {
     model: opts.session.model,
     inputTokens,
     outputTokens,
+    cacheReadTokens: cacheReadTokens > 0 ? cacheReadTokens : undefined,
+    cacheWriteTokens: cacheWriteTokens > 0 ? cacheWriteTokens : undefined,
     durationMs: Date.now() - started,
   };
 
@@ -285,12 +301,14 @@ async function* runTurnBody(opts: {
 async function* emitContextWarnings(
   session: StoredSession,
   context?: ContextEngine,
+  observability?: TurnObservability,
 ): AsyncIterable<ZoxEvent> {
   const estimated = context?.estimateTokens
     ? context.estimateTokens(
         session.messages.map((message) => message.content).join(""),
       )
     : estimateSession(session.messages);
+  observability?.recordContextEstimated?.(estimated);
   const knownWindow = context?.windowTokens;
   if (knownWindow === undefined) {
     if (!session.windowWarned) {
@@ -327,6 +345,8 @@ type ModelRound =
       toolCalls: ToolCall[];
       inputTokens: number;
       outputTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
     }
   | { kind: "error"; message: string };
 
@@ -335,11 +355,15 @@ async function* consumeModelRound(opts: {
   router: TurnRouter;
   messageId: string;
   tools?: StreamChatParams["tools"];
+  observability?: TurnObservability;
 }): AsyncGenerator<ZoxEvent, ModelRound> {
   let text = "";
   let inputTokens = 0;
   let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let cacheWriteTokens = 0;
   const toolCalls: ToolCall[] = [];
+  const modelStarted = performance.now();
 
   for await (const part of opts.router.streamChat({
     model: opts.session.model,
@@ -348,6 +372,8 @@ async function* consumeModelRound(opts: {
         messages: opts.session.messages,
         compactions: opts.session.compactions,
         skillBodies: opts.session.activeSkills?.map((skill) => skill.body),
+        priorStateMarkdown: opts.session.priorStateMarkdown,
+        systemNotes: opts.session.systemNotes,
       }),
     ),
     tools: opts.tools,
@@ -369,10 +395,16 @@ async function* consumeModelRound(opts: {
     } else if (part.type === "usage") {
       inputTokens = part.inputTokens;
       outputTokens = part.outputTokens;
+      cacheReadTokens = part.cacheReadTokens ?? 0;
+      cacheWriteTokens = part.cacheWriteTokens ?? 0;
     } else if (part.type === "error") {
       return { kind: "error", message: part.message };
     }
   }
+
+  opts.observability?.recordModelLatency?.(
+    (performance.now() - modelStarted) / 1000,
+  );
 
   return {
     kind: "ok",
@@ -380,7 +412,14 @@ async function* consumeModelRound(opts: {
     toolCalls,
     inputTokens,
     outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
   };
+}
+
+function appendSystemNote(session: StoredSession, note: string): void {
+  if (!session.systemNotes) session.systemNotes = [];
+  session.systemNotes.push(note);
 }
 
 async function* executeToolCall(input: {
@@ -496,15 +535,19 @@ async function* executeToolCall(input: {
           truncated: false,
         };
       } else {
-        result = await tool.execute(args, {
-          sandboxRoot: opts.session.sandboxRoot,
-          maxToolOutputChars: MAX_TOOL_OUTPUT_CHARS,
-          session: {
-            id: opts.session.id,
-            workspaceRoot: opts.session.workspaceRoot,
-            agent: opts.session.agent,
-          },
-        });
+        const runTool = () =>
+          tool.execute(args, {
+            sandboxRoot: opts.session.sandboxRoot,
+            maxToolOutputChars: MAX_TOOL_OUTPUT_CHARS,
+            session: {
+              id: opts.session.id,
+              workspaceRoot: opts.session.workspaceRoot,
+              agent: opts.session.agent,
+            },
+          });
+        result = opts.observability?.withTool
+          ? await opts.observability.withTool(call.name, runTool)
+          : await runTool();
         if (result.content.length > MAX_TOOL_OUTPUT_CHARS) {
           result = {
             ...result,
