@@ -27,10 +27,7 @@ export function toolContent(
 ): Pick<ToolResult, "content" | "truncated"> {
   const characters = Array.from(content);
   const withinCharacterLimit = characters.slice(0, maxChars).join("");
-  const result = truncateUtf8(
-    withinCharacterLimit,
-    Buffer.byteLength(withinCharacterLimit),
-  );
+  const result = truncateUtf8(withinCharacterLimit, maxChars);
   return {
     content: result.text,
     truncated: characters.length > maxChars || result.truncated,

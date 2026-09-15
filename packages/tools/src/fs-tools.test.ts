@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createBuiltinTools } from "./builtins.ts";
 import { ToolRegistry } from "./registry.ts";
-import type { ZoxTool } from "./types.ts";
+import { toolContent, type ZoxTool } from "./types.ts";
 
 async function ctx(root: string, maxToolOutputChars = 32_000) {
   return {
@@ -104,6 +104,17 @@ describe("fs tools", () => {
     );
     expect(denied.content).toHaveLength(4);
     expect(denied.truncated).toBe(true);
+  });
+
+  test("tool content respects maxToolOutputChars in UTF-8 bytes", () => {
+    const maxToolOutputChars = 5;
+
+    const result = toolContent("🙂🙂", maxToolOutputChars);
+
+    expect(Buffer.byteLength(result.content)).toBeLessThanOrEqual(
+      maxToolOutputChars,
+    );
+    expect(result.truncated).toBe(true);
   });
 
   test("edit rejects overlapping oldString matches", async () => {
