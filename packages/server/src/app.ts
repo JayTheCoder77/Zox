@@ -101,7 +101,7 @@ export function createApp(opts: {
   const permissionDecisions = new Map<string, boolean>();
   const sessionPermissionIds = new Map<string, Set<string>>();
   const turnAborts = new Map<string, AbortController>();
-  const activeSkills = new Map<string, string[]>();
+  const activeSkills = new Map<string, Array<{ name: string; body: string }>>();
   const processUsage = { inputTokens: 0, outputTokens: 0 };
 
   const permission: PermissionResponder = {
@@ -407,6 +407,7 @@ export function createApp(opts: {
   });
 
   app.delete("/mcp/servers/:name", async (c) => {
+    unregisterMcpServer(c.req.param("name"));
     await mcp.remove(c.req.param("name"));
     return c.json({ ok: true, servers: mcp.list() });
   });
@@ -500,6 +501,8 @@ export function createApp(opts: {
     abort: AbortController,
   ) {
     for (const tool of mcp.asZoxTools()) tools.register(tool);
+    const loadedSkills = activeSkills.get(session.id);
+    if (loadedSkills) session.activeSkills = loadedSkills;
     const wait: PermissionResponder = {
       wait(requestId) {
         let ids = sessionPermissionIds.get(session.id);
@@ -602,9 +605,13 @@ export function createApp(opts: {
         });
         if (!skill) return { error: `Skill not found: ${skillName}` };
         const loaded = activeSkills.get(session.id) ?? [];
-        if (!loaded.includes(skillName)) loaded.push(skillName);
+        if (!loaded.some((entry) => entry.name === skillName)) {
+          loaded.push({ name: skillName, body: skill.body });
+        }
         activeSkills.set(session.id, loaded);
-        return { ok: true, skill: skillName };
+        session.activeSkills = loaded;
+        opts.store.save(session);
+        return { ok: true, skill: skillName, body: skill.body };
       }
       case "cancel":
         turnAborts.get(session.id)?.abort();
@@ -636,10 +643,17 @@ export function createApp(opts: {
       return { servers: mcp.list() };
     }
     if (action === "remove" && args[1]) {
+      unregisterMcpServer(args[1]);
       await mcp.remove(args[1]);
       return { servers: mcp.list() };
     }
     return { error: "usage: mcp list|add|remove" };
+  }
+
+  function unregisterMcpServer(name: string): void {
+    const listed = mcp.list().find((server) => server.name === name);
+    if (!listed) return;
+    for (const toolName of listed.tools) tools.unregister(toolName);
   }
 }
 

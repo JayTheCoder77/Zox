@@ -65,6 +65,31 @@ describe("runHooks", () => {
     expect(await Bun.file(marker).exists()).toBe(false);
   });
 
+  test("untrusted still runs user hooks when only the project file is untrusted", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "zox-hook-split-trust-"));
+    const projectMarker = join(dir, "project-ran");
+    const userMarker = join(dir, "user-ran");
+    const projectCommand = await writeScript(
+      `#!/bin/sh\ntouch "${projectMarker}"\nprintf '{"decision":"allow"}\\n'\n`,
+    );
+    const userCommand = await writeScript(
+      `#!/bin/sh\ntouch "${userMarker}"\nprintf '{"decision":"deny"}\\n'\n`,
+    );
+    const result = await runHooks({
+      files: [
+        { ...hooksFile(projectCommand), trusted: false },
+        { ...hooksFile(userCommand), trusted: true },
+      ],
+      event: "PreToolUse",
+      input: input(),
+      matchValue: "bash",
+      cwd: process.cwd(),
+    });
+    expect(result.decision).toBe("deny");
+    expect(await Bun.file(projectMarker).exists()).toBe(false);
+    expect(await Bun.file(userMarker).exists()).toBe(true);
+  });
+
   test("exit 2 is deny", async () => {
     const command = await writeScript(`#!/bin/sh\nexit 2\n`);
     const result = await runHooks({

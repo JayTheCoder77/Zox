@@ -21,7 +21,7 @@ export type RunHooksOpts = {
   event: HookEvent;
   input: HookInput;
   matchValue: string;
-  trusted: boolean;
+  trusted?: boolean;
   cwd: string;
   onError?: "warn" | "deny";
 };
@@ -53,14 +53,12 @@ export function loadHooksFile(path: string): HooksFile {
 }
 
 export async function runHooks(opts: RunHooksOpts): Promise<HookOutput> {
-  if (!opts.trusted) {
-    return { decision: "allow" };
-  }
-
   let output: HookOutput = { decision: "allow" };
   const onError = opts.onError ?? "warn";
 
   for (const file of opts.files) {
+    const fileTrusted = file.trusted ?? opts.trusted ?? true;
+    if (!fileTrusted) continue;
     const entries = file.hooks[opts.event] ?? [];
     for (const entry of entries) {
       if (!matcherHits(entry.matcher, opts.matchValue)) continue;
@@ -82,7 +80,7 @@ export async function runHooks(opts: RunHooksOpts): Promise<HookOutput> {
 
 export function createHookRunner(opts: {
   files: HooksFile[];
-  trusted: boolean;
+  trusted?: boolean;
   cwd: string;
   onError?: "warn" | "deny";
 }): {

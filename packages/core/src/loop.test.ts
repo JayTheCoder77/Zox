@@ -306,4 +306,149 @@ describe("runTurn", () => {
     expect(recorded).toContain("mock:1:1");
     expect(recorded.at(-1)).toBe("end");
   });
+
+  test("build offers mcp_* tools and asks before mutating MCP names", async () => {
+    let seenTools: string[] | undefined;
+    let n = 0;
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* (params) {
+            seenTools = params.tools?.map((t) => t.name);
+            n += 1;
+            if (n === 1) {
+              yield {
+                type: "tool-call",
+                id: "tc_mcp",
+                name: "mcp_github_create_issue",
+                arguments: { title: "x" },
+              };
+              yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+              yield { type: "done" };
+              return;
+            }
+            yield { type: "text-delta", text: "asked" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const tools = new ToolRegistry();
+    tools.register({
+      name: "mcp_github_create_issue",
+      description: "create",
+      parameters: { type: "object", properties: {} },
+      async execute() {
+        return { ok: true, content: "created", truncated: false };
+      },
+    });
+    const events = [];
+    for await (const e of runTurn({
+      session: session(),
+      userContent: "open issue",
+      router,
+      tools,
+      permission: { wait: async () => false },
+    })) {
+      events.push(e);
+    }
+    expect(seenTools).toContain("mcp_github_create_issue");
+    expect(events.some((e) => e.type === "tool.permission_required")).toBe(
+      true,
+    );
+  });
+
+  test("plan denies mcp_* tools without offering them to the model", async () => {
+    let seenTools: string[] | undefined;
+    let n = 0;
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* (params) {
+            n += 1;
+            if (n === 1) {
+              seenTools = params.tools?.map((t) => t.name);
+              yield {
+                type: "tool-call",
+                id: "tc_mcp",
+                name: "mcp_github_list",
+                arguments: {},
+              };
+              yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+              yield { type: "done" };
+              return;
+            }
+            yield { type: "text-delta", text: "denied" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const tools = new ToolRegistry();
+    let executed = false;
+    tools.register({
+      name: "mcp_github_list",
+      description: "list",
+      parameters: { type: "object", properties: {} },
+      async execute() {
+        executed = true;
+        return { ok: true, content: "listed", truncated: false };
+      },
+    });
+    const sess = session();
+    sess.agent = "plan";
+    const events = [];
+    for await (const e of runTurn({
+      session: sess,
+      userContent: "list issues",
+      router,
+      tools,
+    })) {
+      events.push(e);
+    }
+    expect(seenTools ?? []).not.toContain("mcp_github_list");
+    expect(executed).toBe(false);
+    expect(
+      events.some((e) => e.type === "tool.completed" && e.ok === false),
+    ).toBe(true);
+  });
+
+  test("includes injected skill bodies in provider-facing messages", async () => {
+    let providerMessages: Array<{ role: string; content: string }> = [];
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* (params) {
+            providerMessages = params.messages.map((m) => ({
+              role: m.role,
+              content: "content" in m ? String(m.content) : "",
+            }));
+            yield { type: "text-delta", text: "ok" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const sess = session();
+    sess.activeSkills = [
+      { name: "helper", body: "ALWAYS use conventional commits." },
+    ];
+    for await (const _e of runTurn({
+      session: sess,
+      userContent: "commit",
+      router,
+      tools: new ToolRegistry(),
+    })) {
+      /* drain */
+    }
+    expect(
+      providerMessages.some(
+        (m) =>
+          m.role === "system" && m.content.includes("conventional commits"),
+      ),
+    ).toBe(true);
+  });
 });

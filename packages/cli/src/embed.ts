@@ -15,8 +15,8 @@ export async function runEmbed(flags: CliFlags): Promise<void> {
     server = listen({
       hostname: "127.0.0.1",
       port: flags.port ?? 8787,
-      token,
       sandboxMode: flags.sandbox,
+      token,
     });
     baseUrl = `http://127.0.0.1:${server.port}`;
   }
@@ -25,39 +25,41 @@ export async function runEmbed(flags: CliFlags): Promise<void> {
     throw new Error("--token or ZOXX_SERVER_TOKEN is required with --url");
   }
 
-  const client = createZoxClient({ baseUrl, token });
-  const session = await client.sessions.create({
-    workspaceRoot,
-    agent: flags.agent,
-    model: flags.model,
-  });
+  try {
+    const client = createZoxClient({ baseUrl, token });
+    const session = await client.sessions.create({
+      workspaceRoot,
+      agent: flags.agent,
+      model: flags.model,
+    });
 
-  const sessionDefaults = { agent: flags.agent, model: flags.model };
-  const useTui = process.stdout.isTTY && process.stdin.isTTY && !flags.noTui;
+    const sessionDefaults = { agent: flags.agent, model: flags.model };
+    const useTui = process.stdout.isTTY && process.stdin.isTTY && !flags.noTui;
 
-  if (useTui) {
-    try {
-      const tui = await import("@zox/tui");
-      if (typeof tui.runZoxApp === "function") {
-        await tui.runZoxApp({
-          client,
-          session,
-          workspaceRoot,
-          sessionDefaults,
-        });
-        return;
+    if (useTui) {
+      try {
+        const tui = await import("@zox/tui");
+        if (typeof tui.runZoxApp === "function") {
+          await tui.runZoxApp({
+            client,
+            session,
+            workspaceRoot,
+            sessionDefaults,
+          });
+          return;
+        }
+      } catch {
+        // @zox/tui not installed — fall back to line REPL
       }
-    } catch {
-      // @zox/tui not installed — fall back to line REPL
     }
+
+    await runRepl({
+      client,
+      session,
+      workspaceRoot,
+      sessionDefaults,
+    });
+  } finally {
+    server?.stop();
   }
-
-  await runRepl({
-    client,
-    session,
-    workspaceRoot,
-    sessionDefaults,
-  });
-
-  server?.stop();
 }

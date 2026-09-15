@@ -8,7 +8,7 @@ import type {
   ToolCall,
 } from "@zox/providers";
 import type { ToolRegistry, ToolResult } from "@zox/tools";
-import { getAgentProfile } from "./agents.ts";
+import { getAgentProfile, toolMatchesProfile } from "./agents.ts";
 import { createId } from "./ids.ts";
 import { evaluatePermission } from "./permissions.ts";
 import type { StoredMessage, StoredSession } from "./store.ts";
@@ -134,7 +134,7 @@ async function* runTurnBody(opts: {
   const profile = getAgentProfile(opts.session.agent);
   const toolSchemas = opts.tools
     .list()
-    .filter((tool) => profile.tools.includes(tool.name))
+    .filter((tool) => toolMatchesProfile(profile.tools, tool.name))
     .map((tool) => ({
       name: tool.name,
       description: tool.description,
@@ -347,6 +347,7 @@ async function* consumeModelRound(opts: {
       assembleProviderMessages({
         messages: opts.session.messages,
         compactions: opts.session.compactions,
+        skillBodies: opts.session.activeSkills?.map((skill) => skill.body),
       }),
     ),
     tools: opts.tools,
@@ -410,7 +411,7 @@ async function* executeToolCall(input: {
   };
 
   let result: ToolResult;
-  if (!profileTools.includes(call.name)) {
+  if (!toolMatchesProfile(profileTools, call.name)) {
     result = {
       ok: false,
       content: "Permission denied",

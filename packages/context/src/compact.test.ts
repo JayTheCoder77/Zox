@@ -60,4 +60,17 @@ describe("assembleProviderMessages", () => {
       messages,
     );
   });
+
+  test("prepends active skill bodies as a system note", () => {
+    const messages = fourMessages();
+    const provider = assembleProviderMessages({
+      messages,
+      skillBodies: ["# Helper\nUse conventional commits.", "Second skill"],
+    });
+    expect(provider[0]).toMatchObject({
+      role: "system",
+      content: "# Helper\nUse conventional commits.\n\nSecond skill",
+    });
+    expect(provider.slice(1)).toEqual(messages);
+  });
 });

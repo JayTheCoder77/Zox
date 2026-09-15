@@ -42,6 +42,7 @@ export type StoredSession = {
   status: SessionStatus;
   messages: StoredMessage[];
   compactions?: CompactResult[];
+  activeSkills?: Array<{ name: string; body: string }>;
 };
 
 export type CreateSessionInput = CreateSessionRequest & {

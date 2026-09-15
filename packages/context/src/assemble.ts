@@ -10,6 +10,23 @@ export type ProviderMessage = {
 export function assembleProviderMessages<T extends ProviderMessage>(session: {
   messages: T[];
   compactions?: CompactResult[];
+  skillBodies?: string[];
+}): T[] {
+  const assembled = assembleHistory(session);
+  if (!session.skillBodies?.length) {
+    return assembled;
+  }
+  const notes = {
+    id: "skill:active",
+    role: "system",
+    content: session.skillBodies.join("\n\n"),
+  } as T;
+  return [notes, ...assembled];
+}
+
+function assembleHistory<T extends ProviderMessage>(session: {
+  messages: T[];
+  compactions?: CompactResult[];
 }): T[] {
   const compactions = session.compactions ?? [];
   if (compactions.length === 0) {

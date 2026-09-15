@@ -34,6 +34,7 @@ export type HookEntry = {
 export type HooksFile = {
   zoxHooksVersion: 1;
   hooks: Partial<Record<HookEvent, HookEntry[]>>;
+  trusted?: boolean;
 };
 
 export const HOOK_EVENTS = [

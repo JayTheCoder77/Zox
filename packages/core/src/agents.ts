@@ -16,7 +16,17 @@ const BUILD_TOOLS = [
   "write",
   "edit",
   "bash",
+  "mcp_*",
 ];
+
+export function toolMatchesProfile(
+  profileTools: readonly string[],
+  name: string,
+): boolean {
+  return profileTools.some((entry) =>
+    entry.endsWith("*") ? name.startsWith(entry.slice(0, -1)) : entry === name,
+  );
+}
 
 const PLAN_TOOLS = ["read", "grep", "glob", "ls", "skill"];
 
@@ -34,7 +44,10 @@ const PROFILES: Record<"build" | "plan", AgentProfile> = {
   build: {
     name: "build",
     tools: BUILD_TOOLS,
-    ruleset: ruleset(["read", "grep", "glob", "ls", "skill", "todowrite"], []),
+    ruleset: ruleset(
+      ["read", "grep", "glob", "ls", "skill", "todowrite", "mcp_*"],
+      [],
+    ),
   },
   plan: {
     name: "plan",

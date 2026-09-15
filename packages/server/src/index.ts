@@ -47,10 +47,10 @@ export function listen(opts?: {
   const tools = new ToolRegistry();
   for (const tool of createBuiltinTools()) tools.register(tool);
   const metricsEnabled = process.env.ZOXX_OBSERVABILITY !== "0";
-  const hookFiles = loadHookFiles(cwd);
+  const projectTrusted = isProjectTrustedSync(cwd, opts?.trustStorePath);
+  const hookFiles = loadHookFiles(cwd, projectTrusted);
   const hooks = createHookRunner({
     files: hookFiles,
-    trusted: isProjectTrustedSync(cwd, opts?.trustStorePath),
     cwd,
   });
   const app = createApp({
@@ -141,15 +141,15 @@ function adaptersFromEnv(): { adapters: ProviderAdapter[]; config: AppConfig } {
   };
 }
 
-function loadHookFiles(cwd: string): HooksFile[] {
+function loadHookFiles(cwd: string, projectTrusted: boolean): HooksFile[] {
   const files: HooksFile[] = [];
   const projectHooks = join(cwd, ".zox", "hooks.json");
   if (existsSync(projectHooks)) {
-    files.push(loadHooksFile(projectHooks));
+    files.push({ ...loadHooksFile(projectHooks), trusted: projectTrusted });
   }
   const userHooks = join(homedir(), ".config", "zox", "hooks.json");
   if (existsSync(userHooks)) {
-    files.push(loadHooksFile(userHooks));
+    files.push({ ...loadHooksFile(userHooks), trusted: true });
   }
   return files;
 }

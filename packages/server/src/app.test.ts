@@ -372,4 +372,65 @@ describe("createApp", () => {
     const listing = await Array.fromAsync(new Bun.Glob("*.md").scan(autoDir));
     expect(listing.length).toBeGreaterThan(0);
   });
+
+  test("/skill persists skill body and surfaces it on GET /memory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-skill-inject-"));
+    const skillDir = join(root, ".zox/skills/helper");
+    await Bun.write(
+      join(skillDir, "SKILL.md"),
+      "---\nname: helper\n---\nALWAYS use conventional commits.\n",
+    );
+    const server = app();
+    const session = await createSession(server, root);
+    const injected = await server.request(`/sessions/${session.id}/commands`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "skill", args: ["helper"] }),
+    });
+    expect(injected.status).toBe(200);
+    const memory = await server.request(`/sessions/${session.id}/memory`, {
+      headers: auth,
+    });
+    const json = (await memory.json()) as {
+      activeSkills: Array<{ name: string; body: string }>;
+    };
+    expect(json.activeSkills).toHaveLength(1);
+    expect(json.activeSkills[0]?.name).toBe("helper");
+    expect(json.activeSkills[0]?.body).toContain(
+      "ALWAYS use conventional commits",
+    );
+  });
+
+  test("DELETE /mcp/servers/:name unregisters namespaced tools", async () => {
+    const tools = new ToolRegistry();
+    for (const tool of createBuiltinTools()) tools.register(tool);
+    const fixture = join(import.meta.dir, "../../mcp/src/fixtures/fake-mcp.ts");
+    const { McpPool } = await import("@zox/mcp");
+    const mcp = new McpPool();
+    const server = createApp({
+      token,
+      store: new MemorySessionStore(),
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+      tools,
+      mcp,
+    });
+    const added = await server.request("/mcp/servers", {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "github",
+        command: process.execPath,
+        args: [fixture],
+      }),
+    });
+    expect(added.status).toBe(201);
+    expect(tools.get("mcp_github_create_issue")).toBeDefined();
+    const removed = await server.request("/mcp/servers/github", {
+      method: "DELETE",
+      headers: auth,
+    });
+    expect(removed.status).toBe(200);
+    expect(tools.get("mcp_github_create_issue")).toBeUndefined();
+    await mcp.remove("github");
+  });
 });

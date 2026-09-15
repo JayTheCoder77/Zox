@@ -7,6 +7,10 @@ export class ToolRegistry {
     this.#tools.set(tool.name, tool);
   }
 
+  unregister(name: string): void {
+    this.#tools.delete(name);
+  }
+
   get(name: string): ZoxTool | undefined {
     return this.#tools.get(name);
   }

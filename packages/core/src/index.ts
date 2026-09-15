@@ -1,4 +1,8 @@
-export { type AgentProfile, getAgentProfile } from "./agents.ts";
+export {
+  type AgentProfile,
+  getAgentProfile,
+  toolMatchesProfile,
+} from "./agents.ts";
 export {
   type CompactResult,
   compactSessionTurn,
