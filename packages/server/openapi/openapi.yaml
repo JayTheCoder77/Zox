@@ -1,0 +1,114 @@
+openapi: 3.1.0
+info:
+  title: Zox Server API
+  version: 0.0.0
+servers:
+  - url: http://127.0.0.1:8787
+security:
+  - bearerAuth: []
+paths:
+  /sessions:
+    post:
+      summary: Create session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+  /sessions/{id}:
+    get:
+      summary: Session metadata + status
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "404":
+          description: Not found
+  /sessions/{id}/messages:
+    post:
+      summary: Send user message (starts turn)
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageRequest"
+      responses:
+        "202":
+          description: Turn accepted
+        "409":
+          description: Session not idle
+  /sessions/{id}/events:
+    get:
+      summary: SSE event stream
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: text/event-stream of ZoxEvent
+          content:
+            text/event-stream:
+              schema:
+                type: string
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Bearer token (Authorization header)
+  parameters:
+    SessionId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    CreateSessionRequest:
+      type: object
+      required: [workspaceRoot]
+      properties:
+        workspaceRoot:
+          type: string
+        agent:
+          type: string
+          default: build
+        model:
+          type: string
+          default: mock/echo
+    SendMessageRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+    Session:
+      type: object
+      required: [id, workspaceRoot, agent, model, status]
+      properties:
+        id:
+          type: string
+        workspaceRoot:
+          type: string
+        agent:
+          type: string
+        model:
+          type: string
+        status:
+          type: string
+          enum: [idle, running, compacting, awaiting_permission, error]

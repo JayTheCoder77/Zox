@@ -1,0 +1,19 @@
+{
+  "name": "@zox/sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@zox/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "@zox/core": "workspace:*",
+    "@zox/providers": "workspace:*",
+    "@zox/server": "workspace:*",
+    "typescript": "catalog:"
+  }
+}
