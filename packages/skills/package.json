@@ -1,15 +1,10 @@
 {
-  "name": "@zox/tools",
+  "name": "@zox/skills",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
-  },
-  "dependencies": {
-    "@zox/memory": "workspace:*",
-    "@zox/sandbox": "workspace:*",
-    "@zox/skills": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "1.4.2",

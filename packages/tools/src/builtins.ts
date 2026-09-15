@@ -4,6 +4,7 @@ import { globTool } from "./glob.ts";
 import { grepTool } from "./grep.ts";
 import { lsTool } from "./ls.ts";
 import { readTool } from "./read.ts";
+import { skillTool } from "./skill.ts";
 import { todowriteTool } from "./todowrite.ts";
 import type { ZoxTool } from "./types.ts";
 import { writeTool } from "./write.ts";
@@ -17,6 +18,7 @@ export function createBuiltinTools(): ZoxTool[] {
     grepTool,
     globTool,
     lsTool,
+    skillTool,
     todowriteTool,
   ];
 }
