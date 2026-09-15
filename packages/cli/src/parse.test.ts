@@ -21,7 +21,7 @@ describe("parseSlash", () => {
   });
 
   test("SLASH_NAMES includes all MVP commands", () => {
-    for (const name of [
+    const mvpCommands = [
       "help",
       "model",
       "agent",
@@ -35,7 +35,8 @@ describe("parseSlash", () => {
       "sandbox",
       "trace",
       "exit",
-    ]) {
+    ] as const;
+    for (const name of mvpCommands) {
       expect(SLASH_NAMES).toContain(name);
     }
   });

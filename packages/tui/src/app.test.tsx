@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "ink";
-import React from "react";
 import { StatusBar } from "./status-bar.tsx";
 
 describe("StatusBar ink render", () => {

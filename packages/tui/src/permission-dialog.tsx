@@ -11,7 +11,12 @@ export function PermissionDialog(props: {
   });
 
   return (
-    <Box borderStyle="round" borderColor="yellow" paddingX={1} flexDirection="column">
+    <Box
+      borderStyle="round"
+      borderColor="yellow"
+      paddingX={1}
+      flexDirection="column"
+    >
       <Text bold color="yellow">
         Permission required
       </Text>

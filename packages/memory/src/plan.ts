@@ -32,7 +32,10 @@ function parseItem(entry: unknown, index: number): PlanItem {
   if (typeof content !== "string") {
     throw new Error(`Plan item ${index} missing content`);
   }
-  if (typeof status !== "string" || !STATUSES.has(status as PlanItem["status"])) {
+  if (
+    typeof status !== "string" ||
+    !STATUSES.has(status as PlanItem["status"])
+  ) {
     throw new Error(`Plan item ${index} has invalid status`);
   }
   const item: PlanItem = {

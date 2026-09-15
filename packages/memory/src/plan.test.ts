@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parsePlan, type PlanItem } from "./plan.ts";
+import { type PlanItem, parsePlan } from "./plan.ts";
 
 const valid: PlanItem[] = [
   { id: "1", content: "first", status: "pending" },

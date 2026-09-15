@@ -1,11 +1,11 @@
-import { useCallback, useMemo, useRef, useState } from "react";
-import { Box, Text, useApp, useInput } from "ink";
 import type { ZoxEvent } from "@zox/contracts";
 import type { createZoxClient } from "@zox/sdk";
+import { Box, Text, useApp, useInput } from "ink";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { foldTool } from "./format.ts";
 import { PermissionDialog } from "./permission-dialog.tsx";
-import { executeSlash } from "./slash-actions.ts";
 import { cycleSlashCompletion, parseSlash } from "./slash.ts";
+import { executeSlash } from "./slash-actions.ts";
 import { StatusBar } from "./status-bar.tsx";
 
 type SessionHandle = Awaited<
@@ -37,7 +37,9 @@ export function ZoxApp(props: ZoxAppProps) {
   const idCounter = useRef({ n: 0 });
   const [session, setSession] = useState(props.session);
   const [entries, setEntries] = useState<TranscriptEntry[]>([]);
-  const [expandedTools, setExpandedTools] = useState<Set<string>>(() => new Set());
+  const [expandedTools, setExpandedTools] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [input, setInput] = useState("");
   const [slashCycleIndex, setSlashCycleIndex] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -103,8 +105,7 @@ export function ZoxApp(props: ZoxAppProps) {
           ...prev,
           inputTokens: event.inputTokens,
           outputTokens: event.outputTokens,
-          model:
-            event.type === "usage.turn" ? event.model : prev.model,
+          model: event.type === "usage.turn" ? event.model : prev.model,
         }));
       }
       if (event.type === "tool.permission_required") {
@@ -216,7 +217,7 @@ export function ZoxApp(props: ZoxAppProps) {
         setExpandedTools((prev) => {
           const tools = entries.filter((e) => e.kind === "tool");
           const last = tools[tools.length - 1];
-          if (!last || last.kind !== "tool") return prev;
+          if (last?.kind !== "tool") return prev;
           const next = new Set(prev);
           if (next.has(last.toolCallId)) next.delete(last.toolCallId);
           else next.add(last.toolCallId);
@@ -258,9 +259,7 @@ export function ZoxApp(props: ZoxAppProps) {
           const expanded = expandedTools.has(entry.toolCallId);
           return (
             <Text key={entry.id} dimColor={!expanded}>
-              {expanded
-                ? `${folded} (${entry.toolCallId})`
-                : folded}
+              {expanded ? `${folded} (${entry.toolCallId})` : folded}
             </Text>
           );
         }

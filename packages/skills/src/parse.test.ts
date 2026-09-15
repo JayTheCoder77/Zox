@@ -11,7 +11,10 @@ description: Conventional commits from diffs
 
 Use conventional commits.
 `;
-    const skill = parseSkillMarkdown(raw, "/ws/.zox/skills/commit-helper/SKILL.md");
+    const skill = parseSkillMarkdown(
+      raw,
+      "/ws/.zox/skills/commit-helper/SKILL.md",
+    );
     expect(skill).toEqual({
       name: "commit-helper",
       description: "Conventional commits from diffs",

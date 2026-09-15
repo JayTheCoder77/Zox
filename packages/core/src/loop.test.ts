@@ -32,7 +32,12 @@ describe("runTurn", () => {
       userContent: "ping",
       router,
       tools: new ToolRegistry(),
-      ids: { messageId: () => "msg_asst", turnId: () => "turn_1" },
+      ids: {
+        messageId: () => "msg_asst",
+        turnId: () => "turn_1",
+        toolCallId: () => "tc_1",
+        requestId: () => "req_1",
+      },
     })) {
       events.push(event);
     }

@@ -7,10 +7,10 @@ export type ProviderMessage = {
   meta?: { summary?: boolean };
 };
 
-export function assembleProviderMessages(session: {
-  messages: ProviderMessage[];
+export function assembleProviderMessages<T extends ProviderMessage>(session: {
+  messages: T[];
   compactions?: CompactResult[];
-}): ProviderMessage[] {
+}): T[] {
   const compactions = session.compactions ?? [];
   if (compactions.length === 0) {
     return [...session.messages];
@@ -21,12 +21,13 @@ export function assembleProviderMessages(session: {
     compactions.map((c) => [c.fromMessageId, c.summary]),
   );
 
-  const out: ProviderMessage[] = [];
+  const out: T[] = [];
   for (const message of session.messages) {
     if (skipped.has(message.id)) {
       const summary = summaryAt.get(message.id);
       if (summary !== undefined) {
         out.push({
+          ...message,
           id: `compact:${message.id}`,
           role: "assistant",
           content: summary,

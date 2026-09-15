@@ -5,8 +5,8 @@ import { join, resolve } from "node:path";
 import {
   createHookRunner,
   defaultTrustStorePath,
-  loadHooksFile,
   type HooksFile,
+  loadHooksFile,
 } from "@zox/hooks";
 import { McpPool } from "@zox/mcp";
 import { createObservability } from "@zox/observability";
@@ -33,7 +33,7 @@ export function listen(opts?: {
   token?: string;
   trustStorePath?: string;
   sandboxMode?: "host" | "worktree" | "container" | "remote";
-}) {
+}): { port: number; stop(): void } {
   const fromEnv = process.env.ZOXX_SERVER_TOKEN;
   const token = opts?.token ?? fromEnv ?? crypto.randomUUID();
   if (opts?.token ?? fromEnv) {
@@ -72,11 +72,17 @@ export function listen(opts?: {
   });
   const hostname = opts?.hostname ?? "127.0.0.1";
   const port = opts?.port ?? 8787;
-  return Bun.serve({
+  const server = Bun.serve({
     hostname,
     port,
     fetch: app.fetch,
   });
+  return {
+    port: server.port ?? port,
+    stop() {
+      server.stop();
+    },
+  };
 }
 
 function adaptersFromEnv(): { adapters: ProviderAdapter[]; config: AppConfig } {

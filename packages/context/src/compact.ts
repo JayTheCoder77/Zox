@@ -24,6 +24,11 @@ export async function compactSession(opts: {
 
   const range = opts.messages.slice(0, lastUserIndex);
   const lastUser = opts.messages[lastUserIndex];
+  const fromMessage = range[0];
+  const toMessage = range[range.length - 1];
+  if (!lastUser || !fromMessage || !toMessage) {
+    throw new Error("Nothing to compact before the last user message");
+  }
   const prompt = buildCompactionPrompt({
     range,
     lastUserGoal: lastUser.content,
@@ -34,8 +39,8 @@ export async function compactSession(opts: {
   return {
     messages: opts.messages,
     compact: {
-      fromMessageId: range[0].id,
-      toMessageId: range[range.length - 1].id,
+      fromMessageId: fromMessage.id,
+      toMessageId: toMessage.id,
       summary,
     },
   };
@@ -43,7 +48,8 @@ export async function compactSession(opts: {
 
 function findLastUserIndex(messages: CompactMessage[]): number {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
-    if (messages[i].role === "user") return i;
+    const message = messages[i];
+    if (message?.role === "user") return i;
   }
   return -1;
 }

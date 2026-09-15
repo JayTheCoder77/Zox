@@ -138,11 +138,19 @@ export class McpStdioClient {
     if (this.closed) {
       return;
     }
-    this.proc.stdin.write(`${JSON.stringify(message)}\n`);
+    const stdin = this.proc.stdin;
+    if (typeof stdin === "number" || stdin === undefined) {
+      throw new Error("MCP stdin is not a pipe");
+    }
+    stdin.write(`${JSON.stringify(message)}\n`);
   }
 
   private async readStdout(): Promise<void> {
-    const reader = this.proc.stdout.getReader();
+    const stdout = this.proc.stdout;
+    if (typeof stdout === "number" || stdout === undefined) {
+      throw new Error("MCP stdout is not a pipe");
+    }
+    const reader = stdout.getReader();
     const decoder = new TextDecoder();
     try {
       while (!this.closed) {
@@ -167,7 +175,11 @@ export class McpStdioClient {
   }
 
   private async drainStderr(): Promise<void> {
-    const reader = this.proc.stderr.getReader();
+    const stderr = this.proc.stderr;
+    if (typeof stderr === "number" || stderr === undefined) {
+      throw new Error("MCP stderr is not a pipe");
+    }
+    const reader = stderr.getReader();
     try {
       while (!this.closed) {
         const { done } = await reader.read();

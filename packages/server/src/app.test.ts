@@ -10,9 +10,11 @@ import { createApp } from "./app.ts";
 
 const token = "test-token";
 
-function app(overrides: Parameters<typeof createApp>[0] extends infer T
-  ? Partial<T>
-  : never = {}) {
+function app(
+  overrides: Parameters<typeof createApp>[0] extends infer T
+    ? Partial<T>
+    : never = {},
+) {
   const tools = new ToolRegistry();
   for (const tool of createBuiltinTools()) tools.register(tool);
   return createApp({
@@ -36,7 +38,11 @@ async function createSession(
     body: JSON.stringify({ workspaceRoot }),
   });
   expect(created.status).toBe(201);
-  return (await created.json()) as { id: string; status: string; model: string };
+  return (await created.json()) as {
+    id: string;
+    status: string;
+    model: string;
+  };
 }
 
 async function readSseUntil(

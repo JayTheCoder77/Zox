@@ -1,6 +1,10 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { streamLanguageModelToEvents } from "./compatible.ts";
-import type { ProviderAdapter, StreamChatParams, StreamEvent } from "./types.ts";
+import type {
+  ProviderAdapter,
+  StreamChatParams,
+  StreamEvent,
+} from "./types.ts";
 
 export type AnthropicAdapterOptions = {
   apiKey: string;

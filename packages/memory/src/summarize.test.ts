@@ -40,7 +40,10 @@ describe("autoSummarize", () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), "zox-mem-sum-"));
     const sessionId = "abc123";
     const planJson = [{ id: "1", content: "ship feature", status: "done" }];
-    const recentTexts = ["user asked for tests", "assistant added summarize.ts"];
+    const recentTexts = [
+      "user asked for tests",
+      "assistant added summarize.ts",
+    ];
     let capturedPrompt = "";
 
     const summary = await autoSummarize({
@@ -74,9 +77,11 @@ describe("autoSummarize", () => {
       createdAt: string;
     }>;
     expect(index).toHaveLength(1);
-    expect(index[0].sessionId).toBe(sessionId);
-    expect(index[0].path).toBe(`.zox/memory/auto/${date}_${sessionId}.md`);
-    expect(index[0].createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    const entry = index[0];
+    expect(entry).toBeDefined();
+    expect(entry?.sessionId).toBe(sessionId);
+    expect(entry?.path).toBe(`.zox/memory/auto/${date}_${sessionId}.md`);
+    expect(entry?.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   test("appends multiple entries to index.json", async () => {

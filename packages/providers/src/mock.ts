@@ -10,7 +10,9 @@ export type MockAdapterOptions = {
   ) => AsyncIterable<StreamEvent> | StreamEvent[];
 };
 
-export function createMockAdapter(options: MockAdapterOptions = {}): ProviderAdapter {
+export function createMockAdapter(
+  options: MockAdapterOptions = {},
+): ProviderAdapter {
   return {
     id: "mock",
     async *streamChat(params: StreamChatParams): AsyncIterable<StreamEvent> {

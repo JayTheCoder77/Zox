@@ -1,22 +1,22 @@
+import { estimateSession } from "@zox/context";
 import {
   createSessionRequestSchema,
   sendMessageRequestSchema,
   type ZoxEvent,
 } from "@zox/contracts";
-import { estimateSession } from "@zox/context";
 import {
   compactSessionTurn,
   createId,
-  runTurn,
   type HookRunner,
   type PermissionResponder,
+  runTurn,
   type SessionStore,
   type SessionSummarizer,
   type StoredSession,
 } from "@zox/core";
 import type { HooksFile } from "@zox/hooks";
-import { autoSummarize } from "@zox/memory";
 import { McpPool } from "@zox/mcp";
+import { autoSummarize } from "@zox/memory";
 import type { Observability } from "@zox/observability";
 import type { createProviderRouter } from "@zox/providers";
 import { DEFAULT_SANDBOX_CONFIG, ensureWorktree } from "@zox/sandbox";
@@ -83,8 +83,6 @@ export function createApp(opts: {
   const config: AppConfig = {
     model: "mock/echo",
     agent: "build",
-    sandbox: { mode: "host" },
-    memory: { autoSummarize: true },
     ...opts.config,
     sandbox: {
       mode: opts.config?.sandbox?.mode ?? "host",
@@ -414,13 +412,17 @@ export function createApp(opts: {
   });
 
   app.get("/metrics", (c) => {
-    if (!metricsEndpointEnabled(config, opts.observability)) {
+    const observability = opts.observability;
+    if (!metricsEndpointEnabled(config, observability)) {
       return c.json({ error: "Not found" }, 404);
     }
     if (!metricsPublic(config) && !metricsClientIsLocal(c)) {
       return c.json({ error: "Not found" }, 404);
     }
-    return c.text(opts.observability!.renderPrometheus(), 200, {
+    if (!observability) {
+      return c.json({ error: "Not found" }, 404);
+    }
+    return c.text(observability.renderPrometheus(), 200, {
       "Content-Type": "text/plain; version=0.0.4",
     });
   });
@@ -428,8 +430,10 @@ export function createApp(opts: {
   app.get("/hooks", (c) => {
     const file = config.hooks;
     if (!file?.hooks) return c.json({ hooks: {} });
-    const hooks: Record<string, Array<{ matcher: string; command: string }>> =
-      {};
+    const hooks: Record<
+      string,
+      Array<{ matcher: string; command: string }>
+    > = {};
     for (const [event, entries] of Object.entries(file.hooks)) {
       if (!entries) continue;
       hooks[event] = entries.map((entry) => ({
@@ -679,8 +683,9 @@ function redactValue(value: unknown): unknown {
 function commandPathOnly(command: string): string {
   const parts = command.trim().split(/\s+/);
   const pathLike =
-    [...parts].reverse().find((part) => part.includes("/") || part.endsWith(".sh")) ??
-    parts[0];
+    [...parts]
+      .reverse()
+      .find((part) => part.includes("/") || part.endsWith(".sh")) ?? parts[0];
   return pathLike ?? command;
 }
 
@@ -700,9 +705,7 @@ function metricsEndpointEnabled(
 function metricsPublic(config: AppConfig): boolean {
   const metrics = config.observability?.metrics;
   return (
-    typeof metrics === "object" &&
-    metrics !== null &&
-    metrics.public === true
+    typeof metrics === "object" && metrics !== null && metrics.public === true
   );
 }
 

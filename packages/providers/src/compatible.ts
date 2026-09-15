@@ -1,6 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { jsonSchema, streamText, tool } from "ai";
+import { jsonSchema, type ModelMessage, streamText, tool } from "ai";
 import type {
+  ChatMessage,
   ProviderAdapter,
   StreamChatParams,
   StreamEvent,
@@ -36,27 +37,61 @@ function toolsFromSchemas(schemas?: ToolSchema[]) {
   if (!schemas?.length) {
     return undefined;
   }
-  const tools: Record<
-    string,
-    ReturnType<typeof tool<never, Record<string, unknown>>>
-  > = {};
-  for (const schema of schemas) {
-    tools[schema.name] = tool({
-      description: schema.description,
-      inputSchema: jsonSchema(schema.parameters),
-      execute: async () => ({}),
-    });
-  }
-  return tools;
+  return Object.fromEntries(
+    schemas.map((schema) => [
+      schema.name,
+      tool({
+        description: schema.description,
+        inputSchema: jsonSchema(schema.parameters),
+      }),
+    ]),
+  );
+}
+
+function toModelMessages(messages: ChatMessage[]): ModelMessage[] {
+  return messages.map((message): ModelMessage => {
+    if (message.role === "tool") {
+      return {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: message.toolCallId,
+            toolName: message.name,
+            output: { type: "text", value: message.content },
+          },
+        ],
+      };
+    }
+    if (message.role === "assistant" && message.toolCalls?.length) {
+      return {
+        role: "assistant",
+        content: [
+          ...(message.content
+            ? [{ type: "text" as const, text: message.content }]
+            : []),
+          ...message.toolCalls.map((call) => ({
+            type: "tool-call" as const,
+            toolCallId: call.id,
+            toolName: call.name,
+            input: call.arguments,
+          })),
+        ],
+      };
+    }
+    return { role: message.role, content: message.content };
+  });
 }
 
 export async function* streamLanguageModelToEvents(
   params: StreamChatParams,
-  resolveModel: (modelId: string) => ReturnType<ReturnType<typeof createOpenAI>>,
+  resolveModel: (
+    modelId: string,
+  ) => ReturnType<ReturnType<typeof createOpenAI>>,
 ): AsyncIterable<StreamEvent> {
   const result = streamText({
     model: resolveModel(params.model),
-    messages: params.messages,
+    messages: toModelMessages(params.messages),
     tools: toolsFromSchemas(params.tools),
     abortSignal: params.abortSignal,
   });
@@ -95,7 +130,9 @@ export async function* streamLanguageModelToEvents(
   yield { type: "done" };
 }
 
-function usageFromLanguageModelUsage(part: Record<string, unknown>): StreamEvent | null {
+function usageFromLanguageModelUsage(
+  part: Record<string, unknown>,
+): StreamEvent | null {
   const usage =
     "totalUsage" in part
       ? part.totalUsage

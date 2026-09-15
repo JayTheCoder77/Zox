@@ -8,7 +8,7 @@ export async function runEmbed(flags: CliFlags): Promise<void> {
   const workspaceRoot = resolve(flags.workspace ?? process.cwd());
   let baseUrl = flags.url?.replace(/\/$/, "");
   let token = flags.token ?? process.env.ZOXX_SERVER_TOKEN;
-  let server: { stop(): void } | undefined;
+  let server: { port: number; stop(): void } | undefined;
 
   if (!baseUrl) {
     token = token ?? crypto.randomUUID();

@@ -32,7 +32,10 @@ export const todowriteTool: ZoxTool = {
   async execute(args, ctx) {
     const raw = args.items;
     if (raw === undefined) {
-      return toolError("Invalid arguments for todowrite", ctx.maxToolOutputChars);
+      return toolError(
+        "Invalid arguments for todowrite",
+        ctx.maxToolOutputChars,
+      );
     }
     try {
       const items = parsePlan(raw);
