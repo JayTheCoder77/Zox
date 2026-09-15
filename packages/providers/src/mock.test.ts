@@ -26,4 +26,35 @@ describe("createMockAdapter", () => {
       { type: "done" },
     ]);
   });
+
+  test("script can emit a tool-call then text on the next request", async () => {
+    let request = 0;
+    const adapter = createMockAdapter({
+      script: async function* () {
+        request += 1;
+        if (request === 1) {
+          yield {
+            type: "tool-call",
+            id: "c1",
+            name: "read",
+            arguments: { path: "a.ts" },
+          };
+          yield { type: "done" };
+          return;
+        }
+        yield { type: "text-delta", text: "done" };
+        yield { type: "done" };
+      },
+    });
+
+    const first = await collect(
+      adapter.streamChat({ model: "echo", messages: [] }),
+    );
+    expect(first[0]).toMatchObject({ type: "tool-call", name: "read" });
+
+    const second = await collect(
+      adapter.streamChat({ model: "echo", messages: [] }),
+    );
+    expect(second[0]).toEqual({ type: "text-delta", text: "done" });
+  });
 });
