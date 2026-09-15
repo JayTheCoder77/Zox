@@ -1,0 +1,1 @@
+Run a Bash command from the sandbox root, subject to the executable denylist and sandbox resource limits.
