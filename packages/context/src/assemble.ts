@@ -1,0 +1,57 @@
+import type { CompactResult } from "./compact.ts";
+
+export type ProviderMessage = {
+  id: string;
+  role: string;
+  content: string;
+  meta?: { summary?: boolean };
+};
+
+export function assembleProviderMessages(session: {
+  messages: ProviderMessage[];
+  compactions?: CompactResult[];
+}): ProviderMessage[] {
+  const compactions = session.compactions ?? [];
+  if (compactions.length === 0) {
+    return [...session.messages];
+  }
+
+  const skipped = skippedIds(session.messages, compactions);
+  const summaryAt = new Map(
+    compactions.map((c) => [c.fromMessageId, c.summary]),
+  );
+
+  const out: ProviderMessage[] = [];
+  for (const message of session.messages) {
+    if (skipped.has(message.id)) {
+      const summary = summaryAt.get(message.id);
+      if (summary !== undefined) {
+        out.push({
+          id: `compact:${message.id}`,
+          role: "assistant",
+          content: summary,
+          meta: { summary: true },
+        });
+      }
+      continue;
+    }
+    out.push(message);
+  }
+  return out;
+}
+
+function skippedIds(
+  messages: ProviderMessage[],
+  compactions: CompactResult[],
+): Set<string> {
+  const skipped = new Set<string>();
+  for (const compact of compactions) {
+    let inRange = false;
+    for (const message of messages) {
+      if (message.id === compact.fromMessageId) inRange = true;
+      if (inRange) skipped.add(message.id);
+      if (message.id === compact.toMessageId) break;
+    }
+  }
+  return skipped;
+}

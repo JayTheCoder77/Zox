@@ -1,3 +1,4 @@
+import { assembleProviderMessages, estimateSession } from "@zox/context";
 import type { ZoxEvent } from "@zox/contracts";
 import type {
   ChatMessage,
@@ -13,7 +14,8 @@ import type { StoredMessage, StoredSession } from "./store.ts";
 
 const MAX_TOOL_ITERATIONS = 20;
 const UNKNOWN_WINDOW_TOKENS = 128_000;
-const KNOWN_OVERFLOW_RATIO = 0.85;
+export const OVERFLOW_THRESHOLD = 0.85;
+const KNOWN_OVERFLOW_RATIO = OVERFLOW_THRESHOLD;
 const UNKNOWN_OVERFLOW_RATIO = 0.75;
 const MAX_TOOL_OUTPUT_CHARS = 32_000;
 
@@ -251,9 +253,11 @@ async function* emitContextWarnings(
   session: StoredSession,
   context?: ContextEngine,
 ): AsyncIterable<ZoxEvent> {
-  const estimated = (context?.estimateTokens ?? estimateTokens)(
-    session.messages.map((message) => message.content).join(""),
-  );
+  const estimated = context?.estimateTokens
+    ? context.estimateTokens(
+        session.messages.map((message) => message.content).join(""),
+      )
+    : estimateSession(session.messages);
   const knownWindow = context?.windowTokens;
   if (knownWindow === undefined) {
     if (!session.windowWarned) {
@@ -283,10 +287,6 @@ async function* emitContextWarnings(
   }
 }
 
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
-
 type ModelRound =
   | {
       kind: "ok";
@@ -310,7 +310,12 @@ async function* consumeModelRound(opts: {
 
   for await (const part of opts.router.streamChat({
     model: opts.session.model,
-    messages: toChatMessages(opts.session.messages),
+    messages: toChatMessages(
+      assembleProviderMessages({
+        messages: opts.session.messages,
+        compactions: opts.session.compactions,
+      }),
+    ),
     tools: opts.tools,
   })) {
     if (part.type === "text-delta") {

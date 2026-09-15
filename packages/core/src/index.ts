@@ -1,8 +1,14 @@
 export { type AgentProfile, getAgentProfile } from "./agents.ts";
+export {
+  type CompactResult,
+  compactSessionTurn,
+  type SessionSummarizer,
+} from "./compact.ts";
 export { createId } from "./ids.ts";
 export {
   type ContextEngine,
   type HookRunner,
+  OVERFLOW_THRESHOLD,
   type PermissionResponder,
   runTurn,
   type TurnRouter,

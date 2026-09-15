@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@zox/context": "workspace:*",
     "@zox/contracts": "workspace:*",
     "@zox/hooks": "workspace:*",
     "@zox/providers": "workspace:*",

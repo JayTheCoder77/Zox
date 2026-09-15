@@ -1,3 +1,4 @@
+import type { CompactResult } from "@zox/context";
 import type { CreateSessionRequest, SessionStatus } from "@zox/contracts";
 import type { ToolCall } from "@zox/providers";
 import { createId } from "./ids.ts";
@@ -24,6 +25,7 @@ export type StoredSession = {
   model: string;
   status: SessionStatus;
   messages: StoredMessage[];
+  compactions?: CompactResult[];
 };
 
 export class MemorySessionStore {
@@ -52,7 +54,7 @@ export class MemorySessionStore {
 
   update(
     id: string,
-    patch: Partial<Pick<StoredSession, "status" | "messages">>,
+    patch: Partial<Pick<StoredSession, "status" | "messages" | "compactions">>,
   ): StoredSession {
     const current = this.#sessions.get(id);
     if (!current) {
