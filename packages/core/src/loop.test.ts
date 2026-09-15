@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp } from "node:fs/promises";
+import { chmod, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHookRunner } from "@zox/hooks";
 import { createMockAdapter, createProviderRouter } from "@zox/providers";
 import { createBuiltinTools, ToolRegistry } from "@zox/tools";
 import { runTurn } from "./loop.ts";
@@ -158,5 +159,72 @@ describe("runTurn", () => {
       events.some((e) => e.type === "tool.completed" && e.ok === false),
     ).toBe(true);
     expect(await Bun.file(join(root, "out.txt")).exists()).toBe(false);
+  });
+
+  test("PreToolUse deny skips tool execution", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-loop-hook-"));
+    const script = join(root, "deny.sh");
+    await Bun.write(script, `#!/bin/sh\nprintf '{"decision":"deny"}\\n'\n`);
+    await chmod(script, 0o755);
+    await Bun.write(join(root, "a.ts"), "hello");
+    let n = 0;
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* () {
+            n += 1;
+            if (n === 1) {
+              yield {
+                type: "tool-call",
+                id: "tc1",
+                name: "read",
+                arguments: { path: "a.ts" },
+              };
+              yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+              yield { type: "done" };
+              return;
+            }
+            yield { type: "text-delta", text: "hook blocked" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const tools = new ToolRegistry();
+    for (const t of createBuiltinTools()) tools.register(t);
+    const sess = session();
+    sess.workspaceRoot = root;
+    sess.sandboxRoot = root;
+    const hooks = createHookRunner({
+      files: [
+        {
+          zoxHooksVersion: 1,
+          hooks: {
+            PreToolUse: [{ matcher: "read", type: "command", command: script }],
+          },
+        },
+      ],
+      trusted: true,
+      cwd: root,
+    });
+    const events = [];
+    for await (const e of runTurn({
+      session: sess,
+      userContent: "read a",
+      router,
+      tools,
+      hooks,
+    })) {
+      events.push(e);
+    }
+    expect(
+      events.some((e) => e.type === "tool.completed" && e.ok === false),
+    ).toBe(true);
+    expect(
+      sess.messages.some(
+        (m) => m.role === "tool" && m.content === "Permission denied",
+      ),
+    ).toBe(true);
   });
 });
