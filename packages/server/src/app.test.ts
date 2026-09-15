@@ -3,6 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MemorySessionStore } from "@zox/core";
+import { createObservability } from "@zox/observability";
 import { createMockAdapter, createProviderRouter } from "@zox/providers";
 import { createBuiltinTools, ToolRegistry } from "@zox/tools";
 import { createApp } from "./app.ts";
@@ -161,6 +162,25 @@ describe("createApp", () => {
     const server = app();
     const res = await server.request("/models");
     expect(res.status).toBe(401);
+  });
+
+  test("GET /metrics returns 404 when metrics disabled", async () => {
+    const server = app({
+      observability: createObservability({ enabled: false }),
+      config: { observability: { metrics: false } },
+    });
+    const res = await server.request("/metrics", { headers: auth });
+    expect(res.status).toBe(404);
+  });
+
+  test("GET /metrics returns 200 for in-process local client when enabled", async () => {
+    const server = app({
+      observability: createObservability({ enabled: true }),
+      config: { observability: { metrics: true } },
+    });
+    const res = await server.request("/metrics", { headers: auth });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type") ?? "").toContain("text/plain");
   });
 
   test("GET /models returns 200", async () => {

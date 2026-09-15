@@ -1,3 +1,13 @@
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
+import {
+  createHookRunner,
+  defaultTrustStorePath,
+  loadHooksFile,
+  type HooksFile,
+} from "@zox/hooks";
 import { McpPool } from "@zox/mcp";
 import { createObservability } from "@zox/observability";
 import {
@@ -21,6 +31,8 @@ export function listen(opts?: {
   port?: number;
   hostname?: string;
   token?: string;
+  trustStorePath?: string;
+  sandboxMode?: "host" | "worktree" | "container" | "remote";
 }) {
   const fromEnv = process.env.ZOXX_SERVER_TOKEN;
   const token = opts?.token ?? fromEnv ?? crypto.randomUUID();
@@ -30,23 +42,32 @@ export function listen(opts?: {
     console.error("ZOXX_SERVER_TOKEN generated");
   }
 
+  const cwd = process.cwd();
   const { adapters, config } = adaptersFromEnv();
   const tools = new ToolRegistry();
   for (const tool of createBuiltinTools()) tools.register(tool);
   const metricsEnabled = process.env.ZOXX_OBSERVABILITY !== "0";
+  const hookFiles = loadHookFiles(cwd);
+  const hooks = createHookRunner({
+    files: hookFiles,
+    trusted: isProjectTrustedSync(cwd, opts?.trustStorePath),
+    cwd,
+  });
   const app = createApp({
     token,
-    store: new SqliteSessionStore({ workspaceRoot: process.cwd() }),
+    store: new SqliteSessionStore({ workspaceRoot: cwd }),
     router: createProviderRouter({ adapters }),
     tools,
     mcp: new McpPool(),
+    hooks,
     observability: createObservability({ enabled: metricsEnabled }),
     adapterIds: adapters.map((adapter) => adapter.id),
     config: {
       ...config,
-      sandbox: { mode: DEFAULT_SANDBOX_CONFIG.mode },
+      sandbox: { mode: opts?.sandboxMode ?? DEFAULT_SANDBOX_CONFIG.mode },
       observability: { metrics: metricsEnabled },
       memory: { autoSummarize: true },
+      hooks: hookFiles[0],
     },
   });
   const hostname = opts?.hostname ?? "127.0.0.1";
@@ -112,4 +133,58 @@ function adaptersFromEnv(): { adapters: ProviderAdapter[]; config: AppConfig } {
       providers,
     },
   };
+}
+
+function loadHookFiles(cwd: string): HooksFile[] {
+  const files: HooksFile[] = [];
+  const projectHooks = join(cwd, ".zox", "hooks.json");
+  if (existsSync(projectHooks)) {
+    files.push(loadHooksFile(projectHooks));
+  }
+  const userHooks = join(homedir(), ".config", "zox", "hooks.json");
+  if (existsSync(userHooks)) {
+    files.push(loadHooksFile(userHooks));
+  }
+  return files;
+}
+
+function isProjectTrustedSync(
+  projectRoot: string,
+  storePath = defaultTrustStorePath(),
+): boolean {
+  let store: Record<string, string>;
+  try {
+    const raw = readFileSync(storePath, "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return false;
+    }
+    store = parsed as Record<string, string>;
+  } catch {
+    return false;
+  }
+
+  const target = resolve(projectRoot);
+  const targetReal = safeRealpath(target);
+  for (const [key, value] of Object.entries(store)) {
+    const keyReal = safeRealpath(key);
+    if (
+      key === target ||
+      keyReal === targetReal ||
+      key === targetReal ||
+      keyReal === target
+    ) {
+      const expected = createHash("sha256").update(key).digest("hex");
+      return value === expected;
+    }
+  }
+  return false;
+}
+
+function safeRealpath(path: string): string {
+  try {
+    return realpathSync.native(path);
+  } catch {
+    return path;
+  }
 }

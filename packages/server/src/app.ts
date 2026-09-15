@@ -23,6 +23,7 @@ import { DEFAULT_SANDBOX_CONFIG, ensureWorktree } from "@zox/sandbox";
 import { findSkill } from "@zox/skills";
 import { createBuiltinTools, ToolRegistry } from "@zox/tools";
 import { Hono } from "hono";
+import { getConnInfo } from "hono/bun";
 import { streamSSE } from "hono/streaming";
 import { bearerAuth } from "./auth.ts";
 import { SessionEventBus } from "./bus.ts";
@@ -35,7 +36,7 @@ export type AppConfig = {
   sandbox?: { mode: "host" | "worktree" | "container" | "remote" };
   providers?: Record<string, Record<string, unknown>>;
   memory?: { autoSummarize?: boolean };
-  observability?: { metrics?: boolean };
+  observability?: { metrics?: boolean | { public?: boolean } };
   hooks?: HooksFile;
 };
 
@@ -413,10 +414,13 @@ export function createApp(opts: {
   });
 
   app.get("/metrics", (c) => {
-    if (!opts.observability || config.observability?.metrics === false) {
+    if (!metricsEndpointEnabled(config, opts.observability)) {
       return c.json({ error: "Not found" }, 404);
     }
-    return c.text(opts.observability.renderPrometheus(), 200, {
+    if (!metricsPublic(config) && !metricsClientIsLocal(c)) {
+      return c.json({ error: "Not found" }, 404);
+    }
+    return c.text(opts.observability!.renderPrometheus(), 200, {
       "Content-Type": "text/plain; version=0.0.4",
     });
   });
@@ -682,4 +686,36 @@ function commandPathOnly(command: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function metricsEndpointEnabled(
+  config: AppConfig,
+  observability?: Observability,
+): boolean {
+  if (!observability) return false;
+  if (config.observability?.metrics === false) return false;
+  return true;
+}
+
+function metricsPublic(config: AppConfig): boolean {
+  const metrics = config.observability?.metrics;
+  return (
+    typeof metrics === "object" &&
+    metrics !== null &&
+    metrics.public === true
+  );
+}
+
+function metricsClientIsLocal(c: {
+  req: { raw: Request };
+  env?: unknown;
+}): boolean {
+  try {
+    const { remote } = getConnInfo(c as Parameters<typeof getConnInfo>[0]);
+    const address = remote.address;
+    if (!address) return true;
+    return address === "127.0.0.1" || address === "::1";
+  } catch {
+    return true;
+  }
 }
