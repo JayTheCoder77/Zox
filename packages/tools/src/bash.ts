@@ -28,15 +28,17 @@ export const bashTool: ZoxTool = {
       return toolError("Invalid arguments for bash", ctx.maxToolOutputChars);
     }
 
-    const inspection = inspectCommand(
-      args.command,
-      DEFAULT_SANDBOX_CONFIG.denylist,
-    );
-    if (inspection.denied) {
-      return toolDenied(
-        inspection.reason ?? "Command denied",
-        ctx.maxToolOutputChars,
+    for (const segment of args.command.split(/;|&&|\|\||\||\n/)) {
+      const inspection = inspectCommand(
+        segment.trim(),
+        DEFAULT_SANDBOX_CONFIG.denylist,
       );
+      if (inspection.denied) {
+        return toolDenied(
+          inspection.reason ?? "Command denied",
+          ctx.maxToolOutputChars,
+        );
+      }
     }
 
     const result = await runSandboxed({

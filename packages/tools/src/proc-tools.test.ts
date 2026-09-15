@@ -47,6 +47,18 @@ describe("subprocess tools", () => {
     expect(denied.denied).toBe(true);
   });
 
+  test("bash denies denylisted commands in compound commands", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-bash-compound-"));
+    const tools = registryWithBuiltins();
+
+    const denied = await requiredTool(tools, "bash").execute(
+      { command: "echo ok; rm -rf ." },
+      ctx(root),
+    );
+
+    expect(denied.denied).toBe(true);
+  });
+
   test("glob and ls see written files; grep finds a line", async () => {
     const root = await mkdtemp(join(tmpdir(), "zox-glob-"));
     await mkdir(join(root, "src"), { recursive: true });
