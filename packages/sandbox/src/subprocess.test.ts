@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_SANDBOX_CONFIG } from "./defaults.ts";
@@ -67,4 +67,50 @@ describe("runSandboxed", () => {
     expect(result.truncated).toBe(true);
     expect(Buffer.byteLength(result.stdout)).toBeLessThanOrEqual(20);
   });
+
+  test("caps combined output while the subprocess is still running", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-sub-"));
+    const result = await runSandboxed({
+      argv: [
+        "bash",
+        "-lc",
+        "printf '1234567890123456'; printf 'abcdefghijklmnop' >&2; while :; do :; done",
+      ],
+      cwd: root,
+      config: {
+        ...DEFAULT_SANDBOX_CONFIG,
+        root,
+        maxOutputBytes: 20,
+        timeoutMs: 500,
+      },
+      shell: true,
+    });
+    expect(result.truncated).toBe(true);
+    expect(
+      Buffer.byteLength(result.stdout) + Buffer.byteLength(result.stderr),
+    ).toBeLessThanOrEqual(20);
+    expect(result.timedOut).toBe(false);
+  });
+
+  test("kills subprocess descendants on timeout", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-sub-"));
+    const marker = join(root, "escaped");
+    const result = await runSandboxed({
+      argv: ["bash", "-lc", "(sleep 0.4; touch escaped) & wait"],
+      cwd: root,
+      config: { ...DEFAULT_SANDBOX_CONFIG, root, timeoutMs: 50 },
+      shell: true,
+    });
+    await Bun.sleep(700);
+
+    expect(result.timedOut).toBe(true);
+    expect(await fileExists(marker)).toBe(false);
+  });
 });
+
+async function fileExists(path: string): Promise<boolean> {
+  return stat(path).then(
+    () => true,
+    () => false,
+  );
+}

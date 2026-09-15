@@ -29,10 +29,11 @@ export async function runSandboxed(opts: {
     return deniedResult(jailed.reason, startedAt);
   }
 
-  let process: Bun.Subprocess<"ignore", "pipe", "pipe">;
+  let subprocess: Bun.Subprocess<"ignore", "pipe", "pipe">;
   try {
-    process = Bun.spawn(opts.argv, {
+    subprocess = Bun.spawn(opts.argv, {
       cwd: jailed.path,
+      detached: true,
       env: { ...globalThis.process.env, ...opts.env },
       stdin: "ignore",
       stdout: "pipe",
@@ -52,25 +53,84 @@ export async function runSandboxed(opts: {
   }
 
   let timedOut = false;
+  let outputExceeded = false;
+  let remainingOutputBytes = opts.config.maxOutputBytes;
+  let termination: Promise<void> | undefined;
+  const terminateGroup = (): Promise<void> => {
+    termination ??= (async () => {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        try {
+          globalThis.process.kill(-subprocess.pid, "SIGKILL");
+          subprocess.kill("SIGKILL");
+          return;
+        } catch {
+          await Bun.sleep(1);
+        }
+      }
+      subprocess.kill("SIGKILL");
+    })();
+    return termination;
+  };
   const timer = setTimeout(() => {
     timedOut = true;
-    process.kill();
+    void terminateGroup();
   }, opts.config.timeoutMs);
 
-  const [exitCode, stdoutText, stderrText] = await Promise.all([
-    process.exited,
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
+  const readCapped = async (
+    stream: ReadableStream<Uint8Array>,
+  ): Promise<Uint8Array[]> => {
+    const chunks: Uint8Array[] = [];
+    const reader = stream.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) return chunks;
+        if (outputExceeded) {
+          await reader.cancel();
+          return chunks;
+        }
+        if (value.byteLength <= remainingOutputBytes) {
+          chunks.push(value);
+          remainingOutputBytes -= value.byteLength;
+          continue;
+        }
+        if (remainingOutputBytes > 0) {
+          chunks.push(value.subarray(0, remainingOutputBytes));
+          remainingOutputBytes = 0;
+        }
+        outputExceeded = true;
+        clearTimeout(timer);
+        await terminateGroup();
+        await reader.cancel();
+        return chunks;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  };
+
+  const [exitCode, stdoutChunks, stderrChunks] = await Promise.all([
+    subprocess.exited,
+    readCapped(subprocess.stdout),
+    readCapped(subprocess.stderr),
   ]).finally(() => clearTimeout(timer));
 
-  const stdout = truncateUtf8(stdoutText, opts.config.maxOutputBytes);
-  const stderr = truncateUtf8(stderrText, opts.config.maxOutputBytes);
+  const stdoutBytes = Buffer.concat(stdoutChunks);
+  const stderrBytes = Buffer.concat(stderrChunks);
+  const stdout = truncateUtf8(
+    stdoutBytes.toString("utf8"),
+    stdoutBytes.byteLength,
+  );
+  const stderr = truncateUtf8(
+    stderrBytes.toString("utf8"),
+    stderrBytes.byteLength,
+  );
   return {
     ok: !timedOut && exitCode === 0,
     exitCode: timedOut ? TIMED_OUT_EXIT_CODE : exitCode,
     stdout: stdout.text,
     stderr: stderr.text,
-    truncated: stdout.truncated || stderr.truncated,
+    truncated: outputExceeded || stdout.truncated || stderr.truncated,
     timedOut,
     denied: false,
     durationMs: elapsed(startedAt),
