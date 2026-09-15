@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createMockAdapter, createProviderRouter } from "@zox/providers";
+import { createBuiltinTools, ToolRegistry } from "@zox/tools";
 import { runTurn } from "./loop.ts";
 import type { StoredSession } from "./store.ts";
 
@@ -7,6 +11,10 @@ function session(): StoredSession {
   return {
     id: "sess_1",
     workspaceRoot: "/tmp/ws",
+    sandboxRoot: "/tmp/ws",
+    sandboxMode: "worktree",
+    planJson: null,
+    usage: { inputTokens: 0, outputTokens: 0 },
     agent: "build",
     model: "mock/echo",
     status: "idle",
@@ -22,18 +30,25 @@ describe("runTurn", () => {
       session: session(),
       userContent: "ping",
       router,
+      tools: new ToolRegistry(),
       ids: { messageId: () => "msg_asst", turnId: () => "turn_1" },
     })) {
       events.push(event);
     }
     expect(events.map((event) => event.type)).toEqual([
       "session.status",
+      "error",
       "message.delta",
       "usage.turn",
+      "usage.session",
       "message.completed",
       "session.status",
     ]);
     expect(events[1]).toMatchObject({
+      type: "error",
+      code: "context.window_unknown",
+    });
+    expect(events[2]).toMatchObject({
       type: "message.delta",
       delta: "ping",
       messageId: "msg_asst",
@@ -42,5 +57,106 @@ describe("runTurn", () => {
       type: "session.status",
       status: "idle",
     });
+  });
+
+  test("executes a read tool call then completes with assistant text", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-loop-"));
+    await Bun.write(join(root, "a.ts"), "hello");
+    let n = 0;
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* () {
+            n += 1;
+            if (n === 1) {
+              yield {
+                type: "tool-call",
+                id: "tc1",
+                name: "read",
+                arguments: { path: "a.ts" },
+              };
+              yield { type: "usage", inputTokens: 3, outputTokens: 1 };
+              yield { type: "done" };
+              return;
+            }
+            yield { type: "text-delta", text: "saw file" };
+            yield { type: "usage", inputTokens: 4, outputTokens: 2 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const tools = new ToolRegistry();
+    for (const t of createBuiltinTools()) tools.register(t);
+    const sess = session();
+    sess.workspaceRoot = root;
+    sess.sandboxRoot = root;
+    const events = [];
+    for await (const e of runTurn({
+      session: sess,
+      userContent: "read a",
+      router,
+      tools,
+    })) {
+      events.push(e);
+    }
+    expect(events.some((e) => e.type === "tool.started")).toBe(true);
+    expect(events.some((e) => e.type === "tool.completed" && e.ok)).toBe(true);
+    expect(
+      events.some(
+        (e) => e.type === "message.completed" && e.content === "saw file",
+      ),
+    ).toBe(true);
+    expect(sess.usage).toEqual({ inputTokens: 7, outputTokens: 3 });
+  });
+
+  test("ask permission can deny a write", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-loop-write-"));
+    let n = 0;
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* () {
+            n += 1;
+            if (n === 1) {
+              yield {
+                type: "tool-call",
+                id: "tcw",
+                name: "write",
+                arguments: { path: "out.txt", content: "nope" },
+              };
+              yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+              yield { type: "done" };
+              return;
+            }
+            yield { type: "text-delta", text: "denied write" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const tools = new ToolRegistry();
+    for (const t of createBuiltinTools()) tools.register(t);
+    const sess = session();
+    sess.workspaceRoot = root;
+    sess.sandboxRoot = root;
+    const events = [];
+    for await (const e of runTurn({
+      session: sess,
+      userContent: "write it",
+      router,
+      tools,
+      permission: { wait: async () => false },
+    })) {
+      events.push(e);
+    }
+    expect(events.some((e) => e.type === "tool.permission_required")).toBe(
+      true,
+    );
+    expect(
+      events.some((e) => e.type === "tool.completed" && e.ok === false),
+    ).toBe(true);
+    expect(await Bun.file(join(root, "out.txt")).exists()).toBe(false);
   });
 });

@@ -27,6 +27,7 @@
       "dependencies": {
         "@zox/contracts": "workspace:*",
         "@zox/providers": "workspace:*",
+        "@zox/tools": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "1.4.2",
@@ -76,6 +77,7 @@
         "@zox/contracts": "workspace:*",
         "@zox/core": "workspace:*",
         "@zox/providers": "workspace:*",
+        "@zox/tools": "workspace:*",
         "hono": "catalog:",
       },
       "devDependencies": {

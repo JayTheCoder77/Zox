@@ -1,6 +1,12 @@
 export { type AgentProfile, getAgentProfile } from "./agents.ts";
 export { createId } from "./ids.ts";
-export { runTurn, type TurnRouter } from "./loop.ts";
+export {
+  type ContextEngine,
+  type HookRunner,
+  type PermissionResponder,
+  runTurn,
+  type TurnRouter,
+} from "./loop.ts";
 export {
   evaluatePermission,
   type PermissionDecision,

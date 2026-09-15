@@ -6,6 +6,7 @@ import {
 import type { MemorySessionStore } from "@zox/core";
 import { runTurn } from "@zox/core";
 import type { createProviderRouter } from "@zox/providers";
+import { ToolRegistry } from "@zox/tools";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { bearerAuth } from "./auth.ts";
@@ -81,6 +82,7 @@ export function createApp(opts: {
         session,
         userContent: parsed.data.content,
         router: opts.router,
+        tools: new ToolRegistry(),
       })) {
         bus.publish(session.id, event);
       }

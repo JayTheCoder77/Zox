@@ -10,6 +10,7 @@
     "@zox/contracts": "workspace:*",
     "@zox/core": "workspace:*",
     "@zox/providers": "workspace:*",
+    "@zox/tools": "workspace:*",
     "hono": "catalog:"
   },
   "devDependencies": {

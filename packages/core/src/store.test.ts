@@ -11,6 +11,10 @@ describe("MemorySessionStore", () => {
     });
     expect(session.status).toBe("idle");
     expect(session.messages).toEqual([]);
+    expect(session.sandboxRoot).toBe("/tmp/ws");
+    expect(session.sandboxMode).toBe("worktree");
+    expect(session.planJson).toBeNull();
+    expect(session.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
     expect(store.get(session.id)?.id).toBe(session.id);
   });
 
