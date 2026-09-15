@@ -1,0 +1,34 @@
+import { describe, expect, test } from "bun:test";
+import { zoxEventSchema } from "./events.ts";
+
+describe("zoxEventSchema", () => {
+  test("parses message.delta", () => {
+    const event = zoxEventSchema.parse({
+      type: "message.delta",
+      sessionId: "sess_1",
+      messageId: "msg_1",
+      delta: "Hello",
+    });
+    expect(event.type).toBe("message.delta");
+    if (event.type === "message.delta") {
+      expect(event.delta).toBe("Hello");
+    }
+  });
+
+  test("parses session.status idle", () => {
+    const event = zoxEventSchema.parse({
+      type: "session.status",
+      sessionId: "sess_1",
+      status: "idle",
+    });
+    expect(event).toMatchObject({ status: "idle" });
+  });
+
+  test("rejects unknown event types", () => {
+    const result = zoxEventSchema.safeParse({
+      type: "not.a.real.event",
+      sessionId: "sess_1",
+    });
+    expect(result.success).toBe(false);
+  });
+});

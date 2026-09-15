@@ -1,0 +1,26 @@
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const yaml = readFileSync(
+  join(import.meta.dir, "../openapi/openapi.yaml"),
+  "utf8",
+);
+
+describe("openapi stub", () => {
+  test("declares OpenAPI 3.1", () => {
+    expect(yaml).toContain("openapi: 3.1.0");
+  });
+
+  test("includes Phase 0 session routes", () => {
+    expect(yaml).toContain("/sessions:");
+    expect(yaml).toContain("/sessions/{id}:");
+    expect(yaml).toContain("/sessions/{id}/messages:");
+    expect(yaml).toContain("/sessions/{id}/events:");
+  });
+
+  test("uses Bearer auth", () => {
+    expect(yaml).toContain("bearerAuth:");
+    expect(yaml).toContain("Bearer");
+  });
+});
