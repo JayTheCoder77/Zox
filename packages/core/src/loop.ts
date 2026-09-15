@@ -6,6 +6,7 @@ import type {
   StreamEvent,
   ToolCall,
 } from "@zox/providers";
+import { parsePlan } from "@zox/memory";
 import type { ToolRegistry, ToolResult } from "@zox/tools";
 import { getAgentProfile } from "./agents.ts";
 import { createId } from "./ids.ts";
@@ -475,6 +476,9 @@ async function* executeToolCall(input: {
             content: result.content.slice(0, MAX_TOOL_OUTPUT_CHARS),
             truncated: true,
           };
+        }
+        if (call.name === "todowrite" && result.ok) {
+          opts.session.planJson = parsePlan(args.items);
         }
       }
 

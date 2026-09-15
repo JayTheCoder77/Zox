@@ -1,5 +1,6 @@
 import type { CompactResult } from "@zox/context";
 import type { CreateSessionRequest, SessionStatus } from "@zox/contracts";
+import type { PlanItem } from "@zox/memory";
 import type { ToolCall } from "@zox/providers";
 import { createId } from "./ids.ts";
 
@@ -17,7 +18,7 @@ export type StoredSession = {
   workspaceRoot: string;
   sandboxRoot: string;
   sandboxMode: "host" | "worktree" | "container" | "remote";
-  planJson: unknown | null;
+  planJson: PlanItem[] | null;
   usage: { inputTokens: number; outputTokens: number };
   lastTraceId?: string;
   windowWarned?: boolean;

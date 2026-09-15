@@ -5,6 +5,7 @@ export { globTool } from "./glob.ts";
 export { grepTool } from "./grep.ts";
 export { lsTool } from "./ls.ts";
 export { readTool } from "./read.ts";
+export { todowriteTool } from "./todowrite.ts";
 export { ToolRegistry } from "./registry.ts";
 export type {
   ToolContext,

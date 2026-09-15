@@ -161,6 +161,49 @@ describe("runTurn", () => {
     expect(await Bun.file(join(root, "out.txt")).exists()).toBe(false);
   });
 
+  test("todowrite success updates session.planJson", async () => {
+    const plan = [
+      { id: "a", content: "task one", status: "pending" as const },
+      { id: "b", content: "task two", status: "in_progress" as const },
+    ];
+    let n = 0;
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* () {
+            n += 1;
+            if (n === 1) {
+              yield {
+                type: "tool-call",
+                id: "tc_plan",
+                name: "todowrite",
+                arguments: { items: plan },
+              };
+              yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+              yield { type: "done" };
+              return;
+            }
+            yield { type: "text-delta", text: "plan saved" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const tools = new ToolRegistry();
+    for (const t of createBuiltinTools()) tools.register(t);
+    const sess = session();
+    for await (const _e of runTurn({
+      session: sess,
+      userContent: "update plan",
+      router,
+      tools,
+    })) {
+      /* drain */
+    }
+    expect(sess.planJson).toEqual(plan);
+  });
+
   test("PreToolUse deny skips tool execution", async () => {
     const root = await mkdtemp(join(tmpdir(), "zox-loop-hook-"));
     const script = join(root, "deny.sh");
