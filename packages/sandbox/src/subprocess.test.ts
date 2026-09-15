@@ -70,12 +70,13 @@ describe("runSandboxed", () => {
 
   test("caps combined output while the subprocess is still running", async () => {
     const root = await mkdtemp(join(tmpdir(), "zox-sub-"));
+    const scriptPath = join(root, "cap-output.sh");
+    await Bun.write(
+      scriptPath,
+      "printf '1234567890123456'\nprintf 'abcdefghijklmnop' >&2\nwhile :; do :; done\n",
+    );
     const result = await runSandboxed({
-      argv: [
-        "bash",
-        "-lc",
-        "printf '1234567890123456'; printf 'abcdefghijklmnop' >&2; while :; do :; done",
-      ],
+      argv: ["bash", scriptPath],
       cwd: root,
       config: {
         ...DEFAULT_SANDBOX_CONFIG,
@@ -83,7 +84,6 @@ describe("runSandboxed", () => {
         maxOutputBytes: 20,
         timeoutMs: 500,
       },
-      shell: true,
     });
     expect(result.truncated).toBe(true);
     expect(
@@ -95,11 +95,12 @@ describe("runSandboxed", () => {
   test("kills subprocess descendants on timeout", async () => {
     const root = await mkdtemp(join(tmpdir(), "zox-sub-"));
     const marker = join(root, "escaped");
+    const scriptPath = join(root, "spawn-descendant.sh");
+    await Bun.write(scriptPath, "(sleep 0.4; touch escaped) &\nwait\n");
     const result = await runSandboxed({
-      argv: ["bash", "-lc", "(sleep 0.4; touch escaped) & wait"],
+      argv: ["bash", scriptPath],
       cwd: root,
       config: { ...DEFAULT_SANDBOX_CONFIG, root, timeoutMs: 50 },
-      shell: true,
     });
     await Bun.sleep(700);
 

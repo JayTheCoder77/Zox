@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { jailPath } from "./jail.ts";
@@ -9,7 +9,10 @@ describe("jailPath", () => {
     const root = await makeTmpDir();
     await Bun.write(join(root, "hello.txt"), "ok");
     const result = await jailPath(root, "hello.txt");
-    expect(result).toEqual({ ok: true, path: join(root, "hello.txt") });
+    expect(result).toEqual({
+      ok: true,
+      path: join(await realpath(root), "hello.txt"),
+    });
   });
 
   test("denies ../ escape", async () => {
@@ -39,11 +42,30 @@ describe("jailPath", () => {
 
     expect(await jailPath(root, "link/hello.txt")).toEqual({
       ok: true,
-      path: join(realDir, "hello.txt"),
+      path: join(await realpath(realDir), "hello.txt"),
     });
     expect(await jailPath(root, "link/new.txt")).toEqual({
       ok: true,
-      path: join(realDir, "new.txt"),
+      path: join(await realpath(realDir), "new.txt"),
+    });
+  });
+
+  test("returns paths under the real root when the sandbox root is a symlink", async () => {
+    const parent = await makeTmpDir();
+    const realRoot = join(parent, "real-root");
+    const linkedRoot = join(parent, "linked-root");
+    await mkdir(realRoot);
+    await Bun.write(join(realRoot, "hello.txt"), "ok");
+    await symlink(realRoot, linkedRoot);
+
+    const canonicalRoot = await realpath(realRoot);
+    expect(await jailPath(linkedRoot, "hello.txt")).toEqual({
+      ok: true,
+      path: join(canonicalRoot, "hello.txt"),
+    });
+    expect(await jailPath(linkedRoot, "new.txt")).toEqual({
+      ok: true,
+      path: join(canonicalRoot, "new.txt"),
     });
   });
 });

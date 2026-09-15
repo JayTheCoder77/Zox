@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, symlink } from "node:fs/promises";
+import { mkdtemp, realpath, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
@@ -61,7 +61,9 @@ test("creates git worktree under .zox/worktrees/<sessionId>", async () => {
     config: { ...DEFAULT_SANDBOX_CONFIG, mode: "worktree" },
   });
   expect(result.mode).toBe("worktree");
-  expect(result.root).toBe(join(workspaceRoot, ".zox/worktrees", sessionId));
+  expect(result.root).toBe(
+    join(await realpath(workspaceRoot), ".zox/worktrees", sessionId),
+  );
   expect(await Bun.file(join(result.root, "README")).text()).toBe("x");
 });
 
