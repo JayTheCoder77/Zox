@@ -13,6 +13,20 @@ export type StoredMessage = {
   toolCalls?: ToolCall[];
 };
 
+export type UsageRow = {
+  id: string;
+  sessionId: string;
+  turnId: string;
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  durationMs: number;
+  estimatedUsd?: number;
+};
+
 export type StoredSession = {
   id: string;
   workspaceRoot: string;
@@ -22,6 +36,7 @@ export type StoredSession = {
   usage: { inputTokens: number; outputTokens: number };
   lastTraceId?: string;
   windowWarned?: boolean;
+  priorStateMarkdown?: string;
   agent: string;
   model: string;
   status: SessionStatus;
@@ -29,28 +44,59 @@ export type StoredSession = {
   compactions?: CompactResult[];
 };
 
-export class MemorySessionStore {
-  #sessions = new Map<string, StoredSession>();
+export type CreateSessionInput = CreateSessionRequest & {
+  sandboxRoot?: string;
+};
 
-  create(input: CreateSessionRequest): StoredSession {
-    const session: StoredSession = {
-      id: createId("sess"),
-      workspaceRoot: input.workspaceRoot,
-      sandboxRoot: input.workspaceRoot,
-      sandboxMode: "worktree",
-      planJson: null,
-      usage: { inputTokens: 0, outputTokens: 0 },
-      agent: input.agent,
-      model: input.model,
-      status: "idle",
-      messages: [],
-    };
+export interface SessionStore {
+  create(input: CreateSessionInput): StoredSession;
+  get(id: string): StoredSession | undefined;
+  save(session: StoredSession): void;
+  addUsage(sessionId: string, rec: UsageRow): void;
+  listUsage(sessionId: string): UsageRow[];
+}
+
+export function createStoredSession(input: CreateSessionInput): StoredSession {
+  return {
+    id: createId("sess"),
+    workspaceRoot: input.workspaceRoot,
+    sandboxRoot: input.sandboxRoot ?? input.workspaceRoot,
+    sandboxMode: "worktree",
+    planJson: null,
+    usage: { inputTokens: 0, outputTokens: 0 },
+    agent: input.agent,
+    model: input.model,
+    status: "idle",
+    messages: [],
+  };
+}
+
+export class MemorySessionStore implements SessionStore {
+  #sessions = new Map<string, StoredSession>();
+  #usage = new Map<string, UsageRow[]>();
+
+  create(input: CreateSessionInput): StoredSession {
+    const session = createStoredSession(input);
     this.#sessions.set(session.id, session);
     return session;
   }
 
   get(id: string): StoredSession | undefined {
     return this.#sessions.get(id);
+  }
+
+  save(session: StoredSession): void {
+    this.#sessions.set(session.id, session);
+  }
+
+  addUsage(sessionId: string, rec: UsageRow): void {
+    const rows = this.#usage.get(sessionId) ?? [];
+    rows.push(rec);
+    this.#usage.set(sessionId, rows);
+  }
+
+  listUsage(sessionId: string): UsageRow[] {
+    return this.#usage.get(sessionId) ?? [];
   }
 
   update(

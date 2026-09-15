@@ -19,7 +19,11 @@ export {
   type PermissionRuleset,
 } from "./permissions.ts";
 export {
+  type CreateSessionInput,
+  createStoredSession,
   MemorySessionStore,
+  type SessionStore,
   type StoredMessage,
   type StoredSession,
+  type UsageRow,
 } from "./store.ts";
