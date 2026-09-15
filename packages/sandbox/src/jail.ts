@@ -1,4 +1,4 @@
-import { realpath } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 export type JailResult =
@@ -18,6 +18,10 @@ export async function jailPath(
   try {
     real = await realpath(requested);
   } catch {
+    const entry = await lstat(requested).catch(() => null);
+    if (entry?.isSymbolicLink()) {
+      return { ok: false, reason: "path jail: dangling symlink" };
+    }
     const parent = await realpath(resolve(requested, "..")).catch(() => null);
     if (!parent) {
       return { ok: false, reason: "path jail: parent does not exist" };

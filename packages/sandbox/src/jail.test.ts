@@ -15,6 +15,14 @@ describe("jailPath", () => {
     });
   });
 
+  test("allows a missing leaf inside the root", async () => {
+    const root = await makeTmpDir();
+    expect(await jailPath(root, "hello.txt")).toEqual({
+      ok: true,
+      path: join(await realpath(root), "hello.txt"),
+    });
+  });
+
   test("denies ../ escape", async () => {
     const root = await makeTmpDir();
     const result = await jailPath(root, "../secret");
@@ -29,6 +37,18 @@ describe("jailPath", () => {
     await mkdir(root);
     await Bun.write(outside, "secret");
     await symlink(outside, join(root, "link.txt"));
+    const result = await jailPath(root, "link.txt");
+    expect(result.ok).toBe(false);
+  });
+
+  test("denies dangling symlink escape", async () => {
+    const parent = await makeTmpDir();
+    const root = join(parent, "jail");
+    const outside = join(parent, "outside");
+    await mkdir(root);
+    await mkdir(outside);
+    await symlink(join(outside, "new.txt"), join(root, "link.txt"));
+
     const result = await jailPath(root, "link.txt");
     expect(result.ok).toBe(false);
   });
