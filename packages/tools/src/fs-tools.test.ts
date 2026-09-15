@@ -6,10 +6,10 @@ import { createBuiltinTools } from "./builtins.ts";
 import { ToolRegistry } from "./registry.ts";
 import type { ZoxTool } from "./types.ts";
 
-async function ctx(root: string) {
+async function ctx(root: string, maxToolOutputChars = 32_000) {
   return {
     sandboxRoot: root,
-    maxToolOutputChars: 32_000,
+    maxToolOutputChars,
     session: { id: "s", workspaceRoot: root, agent: "build" },
   };
 }
@@ -84,5 +84,41 @@ describe("fs tools", () => {
     );
     expect(ok.ok).toBe(true);
     expect(await Bun.file(join(root, "b.ts")).text()).toBe("bar\nbaz\n");
+  });
+
+  test("error and denied results respect maxToolOutputChars", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-fs-"));
+    const tools = new ToolRegistry();
+    for (const t of createBuiltinTools()) tools.register(t);
+
+    const error = await requiredTool(tools, "read").execute(
+      {},
+      await ctx(root, 4),
+    );
+    expect(error.content).toBe("Inva");
+    expect(error.truncated).toBe(true);
+
+    const denied = await requiredTool(tools, "read").execute(
+      { path: "../secret" },
+      await ctx(root, 4),
+    );
+    expect(denied.content).toHaveLength(4);
+    expect(denied.truncated).toBe(true);
+  });
+
+  test("edit rejects overlapping oldString matches", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-fs-"));
+    await Bun.write(join(root, "a.txt"), "aaa");
+    const tools = new ToolRegistry();
+    for (const t of createBuiltinTools()) tools.register(t);
+
+    const result = await requiredTool(tools, "edit").execute(
+      { path: "a.txt", oldString: "aa", newString: "b" },
+      await ctx(root),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.content).toContain("matched 2 times");
+    expect(await Bun.file(join(root, "a.txt")).text()).toBe("aaa");
   });
 });

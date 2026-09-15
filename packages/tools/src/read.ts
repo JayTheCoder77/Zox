@@ -24,11 +24,11 @@ export const readTool: ZoxTool = {
       !isPositiveInteger(offset) ||
       (limit !== undefined && !isPositiveInteger(limit))
     ) {
-      return toolError("Invalid arguments for read");
+      return toolError("Invalid arguments for read", ctx.maxToolOutputChars);
     }
 
     const jailed = await jailPath(ctx.sandboxRoot, path);
-    if (!jailed.ok) return toolDenied(jailed.reason);
+    if (!jailed.ok) return toolDenied(jailed.reason, ctx.maxToolOutputChars);
 
     try {
       const text = await Bun.file(jailed.path).text();
@@ -47,6 +47,7 @@ export const readTool: ZoxTool = {
     } catch (error) {
       return toolError(
         error instanceof Error ? error.message : "Unable to read file",
+        ctx.maxToolOutputChars,
       );
     }
   },

@@ -37,15 +37,14 @@ export function toolContent(
   };
 }
 
-export function toolError(content: string): ToolResult {
-  return { ok: false, content, truncated: false };
+export function toolError(content: string, maxChars: number): ToolResult {
+  return { ok: false, ...toolContent(content, maxChars) };
 }
 
-export function toolDenied(reason: string): ToolResult {
+export function toolDenied(reason: string, maxChars: number): ToolResult {
   return {
     ok: false,
-    content: reason,
-    truncated: false,
+    ...toolContent(reason, maxChars),
     denied: true,
     denyReason: reason,
   };

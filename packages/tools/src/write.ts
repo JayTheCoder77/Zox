@@ -20,7 +20,7 @@ export const writeTool: ZoxTool = {
     const path = args.path;
     const content = args.content;
     if (typeof path !== "string" || typeof content !== "string") {
-      return toolError("Invalid arguments for write");
+      return toolError("Invalid arguments for write", ctx.maxToolOutputChars);
     }
 
     try {
@@ -28,10 +28,12 @@ export const writeTool: ZoxTool = {
         ctx.sandboxRoot,
         dirname(path),
       );
-      if (!parent.ok) return toolDenied(parent.reason);
+      if (!parent.ok) {
+        return toolDenied(parent.reason, ctx.maxToolOutputChars);
+      }
 
       const jailed = await jailPath(ctx.sandboxRoot, path);
-      if (!jailed.ok) return toolDenied(jailed.reason);
+      if (!jailed.ok) return toolDenied(jailed.reason, ctx.maxToolOutputChars);
 
       await Bun.write(jailed.path, content);
       return {
@@ -41,6 +43,7 @@ export const writeTool: ZoxTool = {
     } catch (error) {
       return toolError(
         error instanceof Error ? error.message : "Unable to write file",
+        ctx.maxToolOutputChars,
       );
     }
   },
