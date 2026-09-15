@@ -10,6 +10,22 @@
         "typescript": "catalog:",
       },
     },
+    "packages/cli": {
+      "name": "@zox/cli",
+      "version": "0.0.0",
+      "bin": {
+        "zox": "./src/index.ts",
+      },
+      "dependencies": {
+        "@zox/hooks": "workspace:*",
+        "@zox/sdk": "workspace:*",
+        "@zox/server": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "1.4.2",
+        "typescript": "catalog:",
+      },
+    },
     "packages/context": {
       "name": "@zox/context",
       "version": "0.0.0",
@@ -236,6 +252,8 @@
     "@vercel/oidc": ["@vercel/oidc@3.2.0", "", {}, "sha512-UycprH3T6n3jH0k44NHMa7pnFHGu/N05MjojYr+Mc6I7obkoLIJujSWwin1pCvdy/eOxrI/l3uDLQsmcrOb4ug=="],
 
     "@workflow/serde": ["@workflow/serde@4.1.0", "", {}, "sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ=="],
+
+    "@zox/cli": ["@zox/cli@workspace:packages/cli"],
 
     "@zox/context": ["@zox/context@workspace:packages/context"],
 

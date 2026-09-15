@@ -18,6 +18,7 @@
     }
   },
   "scripts": {
+    "zox": "bun packages/cli/src/index.ts",
     "test": "bun test",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
