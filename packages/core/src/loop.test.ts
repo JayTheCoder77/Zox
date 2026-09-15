@@ -270,4 +270,35 @@ describe("runTurn", () => {
       ),
     ).toBe(true);
   });
+
+  test("records turn tokens on observability when provided", async () => {
+    const recorded: string[] = [];
+    const observability = {
+      startTurn() {
+        recorded.push("start");
+        return {
+          traceId: "trace",
+          end() {
+            recorded.push("end");
+          },
+        };
+      },
+      recordTool() {},
+      recordTokens(provider: string, input: number, output: number) {
+        recorded.push(`${provider}:${input}:${output}`);
+      },
+    };
+    const router = createProviderRouter({ adapters: [createMockAdapter()] });
+    for await (const _event of runTurn({
+      session: session(),
+      userContent: "ping",
+      router,
+      tools: new ToolRegistry(),
+      observability,
+    })) {
+    }
+    expect(recorded[0]).toBe("start");
+    expect(recorded).toContain("mock:1:1");
+    expect(recorded.at(-1)).toBe("end");
+  });
 });

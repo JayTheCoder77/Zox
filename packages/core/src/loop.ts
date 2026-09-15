@@ -1,12 +1,12 @@
 import { assembleProviderMessages, estimateSession } from "@zox/context";
 import type { ZoxEvent } from "@zox/contracts";
+import { parsePlan } from "@zox/memory";
 import type {
   ChatMessage,
   StreamChatParams,
   StreamEvent,
   ToolCall,
 } from "@zox/providers";
-import { parsePlan } from "@zox/memory";
 import type { ToolRegistry, ToolResult } from "@zox/tools";
 import { getAgentProfile } from "./agents.ts";
 import { createId } from "./ids.ts";
@@ -44,6 +44,12 @@ export type ContextEngine = {
   windowTokens?: number;
 };
 
+export type TurnObservability = {
+  startTurn(): { end(): void; traceId: string };
+  recordTool(name: string, denied: boolean): void;
+  recordTokens(provider: string, input: number, output: number): void;
+};
+
 export async function* runTurn(opts: {
   session: StoredSession;
   userContent: string;
@@ -52,6 +58,31 @@ export async function* runTurn(opts: {
   permission?: PermissionResponder;
   hooks?: HookRunner;
   context?: ContextEngine;
+  observability?: TurnObservability;
+  ids?: {
+    messageId(): string;
+    turnId(): string;
+    toolCallId(): string;
+    requestId(): string;
+  };
+}): AsyncIterable<ZoxEvent> {
+  const turnObs = opts.observability?.startTurn();
+  try {
+    yield* runTurnBody(opts);
+  } finally {
+    turnObs?.end();
+  }
+}
+
+async function* runTurnBody(opts: {
+  session: StoredSession;
+  userContent: string;
+  router: TurnRouter;
+  tools: ToolRegistry;
+  permission?: PermissionResponder;
+  hooks?: HookRunner;
+  context?: ContextEngine;
+  observability?: TurnObservability;
   ids?: {
     messageId(): string;
     turnId(): string;
@@ -210,6 +241,7 @@ export async function* runTurn(opts: {
   }
 
   const { providerId } = splitProvider(opts.session.model);
+  opts.observability?.recordTokens(providerId, inputTokens, outputTokens);
   yield {
     type: "usage.turn",
     sessionId: opts.session.id,
@@ -357,6 +389,7 @@ async function* executeToolCall(input: {
     tools: ToolRegistry;
     permission?: PermissionResponder;
     hooks?: HookRunner;
+    observability?: TurnObservability;
     ids?: {
       messageId(): string;
       turnId(): string;
@@ -434,6 +467,7 @@ async function* executeToolCall(input: {
             content: "Permission denied",
             truncated: false,
           };
+          opts.observability?.recordTool(call.name, true);
           opts.session.messages.push({
             id: createId("msg"),
             role: "tool",
@@ -494,6 +528,10 @@ async function* executeToolCall(input: {
     }
   }
 
+  opts.observability?.recordTool(
+    call.name,
+    !result.ok && result.content === "Permission denied",
+  );
   opts.session.messages.push({
     id: createId("msg"),
     role: "tool",

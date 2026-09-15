@@ -11,6 +11,7 @@ export {
   OVERFLOW_THRESHOLD,
   type PermissionResponder,
   runTurn,
+  type TurnObservability,
   type TurnRouter,
 } from "./loop.ts";
 export {
