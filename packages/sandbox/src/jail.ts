@@ -29,12 +29,12 @@ export async function jailPath(
     if (outside(resolvedRoot, real)) {
       return { ok: false, reason: "path jail: escaped sandbox.root" };
     }
-    return { ok: true, path: resolve(requested) };
+    return { ok: true, path: join(lexicalRoot, relative(resolvedRoot, real)) };
   }
   if (outside(resolvedRoot, real)) {
     return { ok: false, reason: "path jail: escaped sandbox.root" };
   }
-  return { ok: true, path: resolve(requested) };
+  return { ok: true, path: join(lexicalRoot, relative(resolvedRoot, real)) };
 }
 
 function outside(root: string, target: string): boolean {

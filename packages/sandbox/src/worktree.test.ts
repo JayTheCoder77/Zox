@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
@@ -13,6 +13,37 @@ test("builds the configured worktree root", () => {
   expect(worktreeRoot("/workspace", "sess_abc", "tmp/trees")).toBe(
     join("/workspace", "tmp/trees", "sess_abc"),
   );
+});
+
+test("rejects worktree path and session escapes", () => {
+  expect(() => worktreeRoot("/workspace", "../outside", "tmp/trees")).toThrow(
+    /worktree path escape/i,
+  );
+  expect(() => worktreeRoot("/workspace", "sess_abc", "../outside")).toThrow(
+    /worktree path escape/i,
+  );
+});
+
+test("rejects a worktree path through an escaping symlink", async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "zox-wt-"));
+  const outside = await mkdtemp(join(tmpdir(), "zox-wt-outside-"));
+  await $`git init`.cwd(workspaceRoot);
+  await symlink(outside, join(workspaceRoot, "trees"));
+
+  await expect(
+    ensureWorktree({
+      workspaceRoot,
+      sessionId: "sess_abc",
+      config: {
+        ...DEFAULT_SANDBOX_CONFIG,
+        mode: "worktree",
+        worktree: {
+          ...DEFAULT_SANDBOX_CONFIG.worktree,
+          path: "trees",
+        },
+      },
+    }),
+  ).rejects.toThrow(/worktree path escape/i);
 });
 
 test("creates git worktree under .zox/worktrees/<sessionId>", async () => {

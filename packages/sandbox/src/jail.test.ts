@@ -29,6 +29,23 @@ describe("jailPath", () => {
     const result = await jailPath(root, "link.txt");
     expect(result.ok).toBe(false);
   });
+
+  test("returns the canonical path through an in-jail symlink", async () => {
+    const root = await makeTmpDir();
+    const realDir = join(root, "real");
+    await mkdir(realDir);
+    await Bun.write(join(realDir, "hello.txt"), "ok");
+    await symlink(realDir, join(root, "link"));
+
+    expect(await jailPath(root, "link/hello.txt")).toEqual({
+      ok: true,
+      path: join(realDir, "hello.txt"),
+    });
+    expect(await jailPath(root, "link/new.txt")).toEqual({
+      ok: true,
+      path: join(realDir, "new.txt"),
+    });
+  });
 });
 
 async function makeTmpDir(): Promise<string> {
