@@ -7,15 +7,21 @@
       "packages/*"
     ],
     "catalog": {
-      "typescript": "5.9.3",
-      "zod": "4.6.5",
-      "hono": "4.13.7",
-      "ai": "7.0.101",
+      "@ai-sdk/anthropic": "4.0.53",
+      "@ai-sdk/google": "4.0.70",
       "@ai-sdk/openai": "4.0.66",
-      "@biomejs/biome": "2.5.13"
+      "@biomejs/biome": "2.5.13",
+      "ai": "7.0.101",
+      "hono": "4.13.7",
+      "ink": "5.2.1",
+      "react": "18.3.1",
+      "@types/react": "18.3.23",
+      "typescript": "5.9.3",
+      "zod": "4.6.5"
     }
   },
   "scripts": {
+    "zox": "bun packages/cli/src/index.ts",
     "test": "bun test",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",

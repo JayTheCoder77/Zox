@@ -1,0 +1,1 @@
+Find files and directories inside the sandbox whose relative paths match a glob pattern.

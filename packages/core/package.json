@@ -7,8 +7,12 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@zox/context": "workspace:*",
     "@zox/contracts": "workspace:*",
-    "@zox/providers": "workspace:*"
+    "@zox/hooks": "workspace:*",
+    "@zox/memory": "workspace:*",
+    "@zox/providers": "workspace:*",
+    "@zox/tools": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "1.4.2",

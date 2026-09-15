@@ -1,0 +1,20 @@
+{
+  "name": "@zox/tui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.tsx"
+  },
+  "dependencies": {
+    "@zox/contracts": "workspace:*",
+    "@zox/sdk": "workspace:*",
+    "ink": "catalog:",
+    "react": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "@types/react": "catalog:",
+    "typescript": "catalog:"
+  }
+}

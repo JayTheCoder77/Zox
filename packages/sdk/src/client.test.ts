@@ -67,4 +67,101 @@ describe("createZoxClient", () => {
       server.stop(true);
     }
   });
+
+  test("getUsage, command usage, and close after a turn", async () => {
+    const token = "sdk-token";
+    const hono = createApp({
+      token,
+      store: new MemorySessionStore(),
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+    });
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: hono.fetch,
+    });
+    try {
+      const client = createZoxClient({
+        baseUrl: `http://127.0.0.1:${server.port}`,
+        token,
+      });
+      const session = await client.sessions.create({
+        workspaceRoot: "/tmp/ws",
+      });
+      for await (const _ of session.send("ping").events()) {
+        /* drain turn */
+      }
+      const usage = await session.getUsage();
+      expect(usage.inputTokens).toBeGreaterThanOrEqual(0);
+      expect(usage.outputTokens).toBeGreaterThanOrEqual(0);
+
+      const cmdUsage = (await session.command("usage")) as {
+        inputTokens: number;
+        outputTokens: number;
+      };
+      expect(cmdUsage.inputTokens).toBeGreaterThanOrEqual(0);
+
+      await session.close();
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("compact returns without error", async () => {
+    const token = "sdk-token";
+    const hono = createApp({
+      token,
+      store: new MemorySessionStore(),
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+      summarize: async () => "SUM",
+    });
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: hono.fetch,
+    });
+    try {
+      const client = createZoxClient({
+        baseUrl: `http://127.0.0.1:${server.port}`,
+        token,
+      });
+      const session = await client.sessions.create({
+        workspaceRoot: "/tmp/ws",
+      });
+      for await (const _ of session.send("first").events()) {
+        /* drain */
+      }
+      for await (const _ of session.send("second").events()) {
+        /* drain */
+      }
+      await session.compact();
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("models.list returns catalog", async () => {
+    const token = "sdk-token";
+    const hono = createApp({
+      token,
+      store: new MemorySessionStore(),
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+    });
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: hono.fetch,
+    });
+    try {
+      const client = createZoxClient({
+        baseUrl: `http://127.0.0.1:${server.port}`,
+        token,
+      });
+      const { models } = await client.models.list();
+      expect(Array.isArray(models)).toBe(true);
+      expect(models.length).toBeGreaterThan(0);
+    } finally {
+      server.stop(true);
+    }
+  });
 });

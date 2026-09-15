@@ -1,0 +1,1 @@
+Search UTF-8 text files inside the sandbox for matching lines, optionally restricted by path and file glob.

@@ -1,0 +1,1 @@
+Replace the session plan with a full todo list. Pass the complete `items` array on every call (no partial updates). Each item needs `id`, `content`, and `status` (`pending`, `in_progress`, or `done`); `notes` is optional.

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { createOpenAICompatibleAdapter } from "./compatible.ts";
 import { createMockAdapter } from "./mock.ts";
 import { createProviderRouter, parseModelRef } from "./router.ts";
+import type { StreamEvent } from "./types.ts";
 
 describe("parseModelRef", () => {
   test("splits provider/model", () => {
@@ -38,5 +40,28 @@ describe("createProviderRouter", () => {
   test("throws on unknown provider", () => {
     const router = createProviderRouter({ adapters: [createMockAdapter()] });
     expect(() => router.resolve("missing/x")).toThrow(/unknown provider/i);
+  });
+
+  test("routes model ids containing slashes to compatible providers", () => {
+    async function* fakeStream(): AsyncIterable<StreamEvent> {
+      yield { type: "done" };
+    }
+    const router = createProviderRouter({
+      adapters: [
+        createOpenAICompatibleAdapter({
+          id: "openrouter",
+          apiKey: "x",
+          streamChatImpl: fakeStream,
+        }),
+      ],
+    });
+
+    expect(router.resolve("openrouter/anthropic/claude-3.5-sonnet").id).toBe(
+      "openrouter",
+    );
+    expect(parseModelRef("openrouter/anthropic/claude-3.5-sonnet")).toEqual({
+      providerId: "openrouter",
+      modelId: "anthropic/claude-3.5-sonnet",
+    });
   });
 });

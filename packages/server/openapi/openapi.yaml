@@ -65,6 +65,143 @@ paths:
             text/event-stream:
               schema:
                 type: string
+  /sessions/{id}/cancel:
+    post:
+      summary: Cancel in-flight turn
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Cancelled
+  /sessions/{id}/permissions/{requestId}:
+    post:
+      summary: Approve or deny a tool permission request
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approved]
+              properties:
+                approved:
+                  type: boolean
+      responses:
+        "200":
+          description: Decision recorded
+  /sessions/{id}/compact:
+    post:
+      summary: Manual compact
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Compacted
+  /sessions/{id}/commands:
+    post:
+      summary: Slash-command equivalents except /exit
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                args:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Command result
+  /sessions/{id}/close:
+    post:
+      summary: SessionEnd hooks and auto-summarize
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Closed
+  /sessions/{id}/memory:
+    get:
+      summary: Plan, prior-state, and active skills
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Memory snapshot
+  /models:
+    get:
+      summary: List adapters and sample model ids
+      responses:
+        "200":
+          description: OK
+  /usage:
+    get:
+      summary: Session or process usage totals
+      parameters:
+        - name: sessionId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+  /config:
+    get:
+      summary: Redacted effective config
+      responses:
+        "200":
+          description: OK
+    put:
+      summary: Merge non-secret config fields
+      responses:
+        "200":
+          description: OK
+  /mcp/servers:
+    post:
+      summary: Register MCP server
+      responses:
+        "201":
+          description: Created
+  /mcp/servers/{name}:
+    delete:
+      summary: Remove MCP server
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Removed
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      responses:
+        "200":
+          description: text/plain prometheus
+        "404":
+          description: Metrics disabled
+  /hooks:
+    get:
+      summary: Effective hooks with command paths only
+      responses:
+        "200":
+          description: OK
 components:
   securitySchemes:
     bearerAuth:

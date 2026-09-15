@@ -1,0 +1,1 @@
+Read a UTF-8 text file inside the sandbox and return numbered lines, optionally restricted to a 1-indexed offset and line limit.

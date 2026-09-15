@@ -11,6 +11,8 @@
     "typescript": "catalog:"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "catalog:",
+    "@ai-sdk/google": "catalog:",
     "@ai-sdk/openai": "catalog:",
     "ai": "catalog:"
   }

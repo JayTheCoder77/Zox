@@ -4,10 +4,22 @@ import type {
   StreamEvent,
 } from "./types.ts";
 
-export function createMockAdapter(): ProviderAdapter {
+export type MockAdapterOptions = {
+  script?: (
+    params: StreamChatParams,
+  ) => AsyncIterable<StreamEvent> | StreamEvent[];
+};
+
+export function createMockAdapter(
+  options: MockAdapterOptions = {},
+): ProviderAdapter {
   return {
     id: "mock",
     async *streamChat(params: StreamChatParams): AsyncIterable<StreamEvent> {
+      if (options.script) {
+        yield* options.script(params);
+        return;
+      }
       const lastUser = [...params.messages]
         .reverse()
         .find((message) => message.role === "user");
