@@ -67,6 +67,8 @@ All mutating and subprocess tools: **permission → verification gate → [PreTo
 
 ## Skills (`packages/skills`)
 
+Full harness behavior (Phase 1 vs 1.5) is specified in **[skills.md](./skills.md)**.
+
 ### Discovery paths (order)
 
 1. `.zox/skills/<name>/SKILL.md`
@@ -86,11 +88,18 @@ description: Conventional commits from diffs
 ...
 ```
 
-### Activation
+### Activation (Phase 1)
 
-- **Slash:** `/skill commit-helper` injects skill into session state.
-- **Tool:** model calls `skill` with `name` argument.
+- **Slash:** `/skill commit-helper` injects skill into session `activeSkills` (injected every turn).
+- **Tool:** model calls `skill` with `name` argument (returns body as tool result only).
 - **Auto:** config `skills.autoLoad[]` on session start.
+
+### Activation (Phase 1.5)
+
+- **Catalog:** discovered skills index (name + description) in context so the model can choose.
+- **Tool parity:** `skill` tool also adds to `activeSkills`.
+- **Slash:** `/skills`, `/skills reload`, unload variants.
+- **API/SDK:** list catalog, load/unload active skills on a session.
 
 Skills marked **protected** from prune (see [context.md](./context.md)).
 
@@ -111,6 +120,7 @@ Parsed when user input starts with `/` in TUI/REPL; also available via SDK `sess
 | `/clear` | | New session |
 | `/mcp` | `list\|add\|remove` | MCP management |
 | `/skill` | `<name>` | Load skill |
+| `/skills` | `reload` | List skills; rescan disk (Phase 1.5) |
 | `/cancel` | | Cancel current turn |
 | `/sandbox` | `worktree\|host\|…` | Set sandbox tier (default `worktree`) |
 | `/trace` | | Last OTel trace id |
