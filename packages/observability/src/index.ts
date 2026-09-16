@@ -1,5 +1,14 @@
 import { createMetrics, type ZoxMetrics } from "./metrics.ts";
 import {
+  assertOtlpEndpoint,
+  installTracerProvider,
+  resolveOtlpEndpoint,
+  resolveServiceName,
+  shutdownOwnedTracerProvider,
+  type CreateObservabilityOpts,
+  type OtlpExporterFactory,
+} from "./provider.ts";
+import {
   disabledTraceId,
   startTurnSpan,
   tracingEnabled,
@@ -7,6 +16,7 @@ import {
 } from "./traces.ts";
 
 export type { ZoxMetrics };
+export type { CreateObservabilityOpts, OtlpExporterFactory };
 
 export type Observability = {
   startTurn(attrs?: { "zox.skills.active"?: string }): {
@@ -23,21 +33,37 @@ export type Observability = {
   recordSkillLoad(source: "slash" | "tool" | "auto"): void;
   withTool<T>(name: string, fn: () => Promise<T>): Promise<T>;
   renderPrometheus(): string;
+  shutdown(): Promise<void>;
 };
 
-export function createObservability(opts: {
-  enabled: boolean;
-  recordContent?: boolean;
-}): Observability {
+export function createObservability(
+  opts: CreateObservabilityOpts = {},
+): Observability {
+  const enabled = opts.enabled ?? true;
   const recordContent = opts.recordContent ?? false;
   void recordContent;
   const metrics = createMetrics();
+
+  let installed = { owned: false as boolean };
+  if (tracingEnabled(enabled)) {
+    const endpoint = resolveOtlpEndpoint(opts.otlp?.endpoint);
+    if (endpoint !== undefined) {
+      assertOtlpEndpoint(endpoint);
+    }
+    installed = installTracerProvider({
+      serviceName: resolveServiceName(opts.serviceName),
+      otlpEndpoint: endpoint,
+      otlpHeaders: opts.otlp?.headers,
+      spanExporter: opts.spanExporter,
+      createOtlpExporter: opts.createOtlpExporter,
+    });
+  }
 
   return {
     startTurn(attrs) {
       metrics.recordTurn();
       const started = performance.now();
-      const span = tracingEnabled(opts.enabled)
+      const span = tracingEnabled(enabled)
         ? startTurnSpan(attrs)
         : disabledTraceId();
       return {
@@ -73,13 +99,17 @@ export function createObservability(opts: {
       metrics.recordSkillLoad(source);
     },
     async withTool<T>(name: string, fn: () => Promise<T>): Promise<T> {
-      if (!tracingEnabled(opts.enabled)) {
+      if (!tracingEnabled(enabled)) {
         return fn();
       }
       return withToolSpan(name, fn);
     },
     renderPrometheus() {
       return metrics.renderPrometheus();
+    },
+    async shutdown() {
+      if (!installed.owned) return;
+      await shutdownOwnedTracerProvider();
     },
   };
 }

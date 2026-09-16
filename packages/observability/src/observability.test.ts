@@ -1,11 +1,26 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { trace } from "@opentelemetry/api";
+import { ProxyTracerProvider, trace } from "@opentelemetry/api";
 import {
   BasicTracerProvider,
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 import { createObservability } from "./index.ts";
+
+function isNoopDelegate(): boolean {
+  const provider = trace.getTracerProvider();
+  if (!(provider instanceof ProxyTracerProvider)) return false;
+  return provider.getDelegate().constructor.name === "NoopTracerProvider";
+}
+
+async function forceFlushGlobalProvider(): Promise<void> {
+  const raw = trace.getTracerProvider();
+  const provider =
+    raw instanceof ProxyTracerProvider ? raw.getDelegate() : raw;
+  if (provider instanceof BasicTracerProvider) {
+    await provider.forceFlush();
+  }
+}
 
 const METRIC_NAMES = [
   "zox_turns_total",
@@ -22,12 +37,25 @@ const METRIC_NAMES = [
 
 describe("createObservability", () => {
   const previousObservability = process.env.ZOXX_OBSERVABILITY;
+  const previousOtlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+  const previousServiceName = process.env.OTEL_SERVICE_NAME;
 
   afterEach(() => {
+    trace.disable();
     if (previousObservability === undefined) {
       delete process.env.ZOXX_OBSERVABILITY;
     } else {
       process.env.ZOXX_OBSERVABILITY = previousObservability;
+    }
+    if (previousOtlpEndpoint === undefined) {
+      delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+    } else {
+      process.env.OTEL_EXPORTER_OTLP_ENDPOINT = previousOtlpEndpoint;
+    }
+    if (previousServiceName === undefined) {
+      delete process.env.OTEL_SERVICE_NAME;
+    } else {
+      process.env.OTEL_SERVICE_NAME = previousServiceName;
     }
   });
 
@@ -90,6 +118,7 @@ describe("createObservability", () => {
 
   test("enabled startTurn records gen_ai.chat or zox.session span", async () => {
     delete process.env.ZOXX_OBSERVABILITY;
+    trace.disable();
     const exporter = new InMemorySpanExporter();
     const provider = new BasicTracerProvider({
       spanProcessors: [new SimpleSpanProcessor(exporter)],
@@ -122,5 +151,134 @@ describe("createObservability", () => {
     expect(
       spans.some((span) => span.attributes["zox.skills.active"] === "helper"),
     ).toBe(true);
+  });
+
+  test("startTurn with spanExporter records gen_ai.chat after installing provider", async () => {
+    delete process.env.ZOXX_OBSERVABILITY;
+    trace.disable();
+    const exporter = new InMemorySpanExporter();
+    const obs = createObservability({ enabled: true, spanExporter: exporter });
+    const turn = obs.startTurn();
+    turn.end();
+    await forceFlushGlobalProvider();
+    const names = exporter.getFinishedSpans().map((span) => span.name);
+    expect(names).toContain("gen_ai.chat");
+    await obs.shutdown();
+    expect(isNoopDelegate()).toBe(true);
+  });
+
+  test("ZOXX_OBSERVABILITY=0 does not record spans on the in-memory exporter", async () => {
+    process.env.ZOXX_OBSERVABILITY = "0";
+    trace.disable();
+    const exporter = new InMemorySpanExporter();
+    const obs = createObservability({ enabled: true, spanExporter: exporter });
+    const turn = obs.startTurn();
+    turn.end();
+    await forceFlushGlobalProvider();
+    expect(exporter.getFinishedSpans()).toEqual([]);
+    await obs.shutdown();
+    expect(obs.renderPrometheus()).toMatch(/zox_turns_total\s+1\b/);
+  });
+
+  test("no endpoint does not call createOtlpExporter", async () => {
+    delete process.env.ZOXX_OBSERVABILITY;
+    delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+    trace.disable();
+    let called = 0;
+    const obs = createObservability({
+      enabled: true,
+      createOtlpExporter: () => {
+        called += 1;
+        throw new Error("OTLP factory should not run");
+      },
+    });
+    obs.startTurn().end();
+    await obs.shutdown();
+    expect(called).toBe(0);
+  });
+
+  test("endpoint uses injected OTLP factory and records a finished gen_ai.chat span", async () => {
+    delete process.env.ZOXX_OBSERVABILITY;
+    trace.disable();
+    const otlpExporter = new InMemorySpanExporter();
+    const calls: Array<{ url: string; headers?: Record<string, string> }> = [];
+    const obs = createObservability({
+      enabled: true,
+      serviceName: "zox-test",
+      otlp: {
+        endpoint: "http://127.0.0.1:4318/v1/traces",
+        headers: { Authorization: "Bearer secret-token" },
+      },
+      createOtlpExporter: (opts) => {
+        calls.push(opts);
+        return otlpExporter;
+      },
+    });
+    obs.startTurn().end();
+    await forceFlushGlobalProvider();
+    expect(calls).toEqual([
+      {
+        url: "http://127.0.0.1:4318/v1/traces",
+        headers: { Authorization: "Bearer secret-token" },
+      },
+    ]);
+    expect(otlpExporter.getFinishedSpans().map((s) => s.name)).toContain(
+      "gen_ai.chat",
+    );
+    await obs.shutdown();
+  });
+
+  test("OTEL_EXPORTER_OTLP_ENDPOINT is used when config endpoint is absent", async () => {
+    delete process.env.ZOXX_OBSERVABILITY;
+    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://otel.example:4318/v1/traces";
+    trace.disable();
+    const urls: string[] = [];
+    const exporter = new InMemorySpanExporter();
+    const obs = createObservability({
+      enabled: true,
+      createOtlpExporter: ({ url }) => {
+        urls.push(url);
+        return exporter;
+      },
+    });
+    await obs.shutdown();
+    expect(urls).toEqual(["http://otel.example:4318/v1/traces"]);
+  });
+
+  test("invalid OTLP endpoint fails init", () => {
+    delete process.env.ZOXX_OBSERVABILITY;
+    trace.disable();
+    expect(() =>
+      createObservability({
+        enabled: true,
+        otlp: { endpoint: "not-a-url" },
+      }),
+    ).toThrow("Invalid OTLP endpoint: not-a-url");
+  });
+
+  test("does not replace an already installed global provider", async () => {
+    delete process.env.ZOXX_OBSERVABILITY;
+    trace.disable();
+    const existing = new InMemorySpanExporter();
+    const provider = new BasicTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(existing)],
+    });
+    trace.setGlobalTracerProvider(provider);
+    let factoryCalls = 0;
+    const obs = createObservability({
+      enabled: true,
+      otlp: { endpoint: "http://127.0.0.1:4318/v1/traces" },
+      createOtlpExporter: () => {
+        factoryCalls += 1;
+        return new InMemorySpanExporter();
+      },
+    });
+    obs.startTurn().end();
+    await provider.forceFlush();
+    await obs.shutdown();
+    expect(factoryCalls).toBe(0);
+    expect(existing.getFinishedSpans().map((s) => s.name)).toContain(
+      "gen_ai.chat",
+    );
   });
 });

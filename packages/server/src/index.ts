@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import {
   adaptersFromConfig,
   loadZoxConfig,
+  resolveConfigEnv,
   resolveMcpServerEnv,
 } from "@zox/config";
 import {
@@ -44,6 +45,15 @@ export async function listen(opts?: {
   const { adapters, providerMeta } = adaptersFromConfig(zoxConfig);
   const tools = new ToolRegistry();
   for (const tool of createBuiltinTools()) tools.register(tool);
+  const observability = createObservability({
+    enabled: zoxConfig.observability?.enabled,
+    recordContent: zoxConfig.observability?.recordContent ?? false,
+    serviceName: zoxConfig.observability?.serviceName,
+    otlp: {
+      endpoint: zoxConfig.observability?.otlp?.endpoint,
+      headers: resolveOtlpHeaders(zoxConfig.observability?.otlp?.headers),
+    },
+  });
   const mcp = new McpPool();
   await registerMcpFromConfig(mcp, tools, zoxConfig);
 
@@ -57,10 +67,6 @@ export async function listen(opts?: {
 
   const projectTrusted = isProjectTrustedSync(cwd, opts?.trustStorePath);
   const hookFiles = loadHookFiles(cwd, projectTrusted);
-  const observability = createObservability({
-    enabled: metricsEnabled,
-    recordContent: zoxConfig.observability?.recordContent ?? false,
-  });
   const hooks = createHookRunner({
     files: hookFiles,
     cwd,
@@ -127,8 +133,20 @@ export async function listen(opts?: {
     port: server.port ?? port,
     stop() {
       server.stop();
+      void observability.shutdown();
     },
   };
+}
+
+function resolveOtlpHeaders(
+  headers: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!headers) return undefined;
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    out[key] = resolveConfigEnv(value);
+  }
+  return out;
 }
 
 async function registerMcpFromConfig(

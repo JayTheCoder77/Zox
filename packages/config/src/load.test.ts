@@ -53,4 +53,27 @@ describe("zoxConfigSchema", () => {
     expect(parsed.budget?.preCompactTokenThreshold).toBe(120000);
     expect(parsed.tools?.webfetch?.allowedHosts).toEqual(["example.com"]);
   });
+
+  test("parses observability otlp endpoint, headers, enabled, and serviceName", () => {
+    const parsed = zoxConfigSchema.parse({
+      observability: {
+        enabled: true,
+        serviceName: "zox-dev",
+        recordContent: false,
+        otlp: {
+          endpoint: "http://localhost:4318/v1/traces",
+          headers: { Authorization: "Bearer ${LANGFUSE_OTEL_TOKEN}" },
+        },
+        metrics: { public: false },
+      },
+    });
+    expect(parsed.observability?.enabled).toBe(true);
+    expect(parsed.observability?.serviceName).toBe("zox-dev");
+    expect(parsed.observability?.otlp?.endpoint).toBe(
+      "http://localhost:4318/v1/traces",
+    );
+    expect(parsed.observability?.otlp?.headers).toEqual({
+      Authorization: "Bearer ${LANGFUSE_OTEL_TOKEN}",
+    });
+  });
 });
