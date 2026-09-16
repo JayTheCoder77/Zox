@@ -17,6 +17,7 @@ const METRIC_NAMES = [
   "zox_compactions_total",
   "zox_session_cost_usd",
   "zox_hook_duration_seconds",
+  "zox_skills_loads_total",
 ] as const;
 
 describe("createObservability", () => {
@@ -102,6 +103,24 @@ describe("createObservability", () => {
     const names = exporter.getFinishedSpans().map((span) => span.name);
     expect(
       names.some((name) => name === "gen_ai.chat" || name === "zox.session"),
+    ).toBe(true);
+  });
+
+  test("startTurn records zox.skills.active on the span", async () => {
+    delete process.env.ZOXX_OBSERVABILITY;
+    trace.disable();
+    const exporter = new InMemorySpanExporter();
+    const provider = new BasicTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    });
+    trace.setGlobalTracerProvider(provider);
+    const obs = createObservability({ enabled: true });
+    const turn = obs.startTurn({ "zox.skills.active": "helper" });
+    turn.end();
+    await provider.forceFlush();
+    const spans = exporter.getFinishedSpans();
+    expect(
+      spans.some((span) => span.attributes["zox.skills.active"] === "helper"),
     ).toBe(true);
   });
 });

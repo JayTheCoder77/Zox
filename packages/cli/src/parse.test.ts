@@ -31,6 +31,7 @@ describe("parseSlash", () => {
       "clear",
       "mcp",
       "skill",
+      "skills",
       "cancel",
       "sandbox",
       "trace",
@@ -39,6 +40,7 @@ describe("parseSlash", () => {
     for (const name of mvpCommands) {
       expect(SLASH_NAMES).toContain(name);
     }
+    expect(SLASH_NAMES).toContain("skills");
   });
 });
 

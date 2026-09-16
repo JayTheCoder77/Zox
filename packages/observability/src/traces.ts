@@ -25,10 +25,11 @@ export function startSessionSpan(): SpanHandle {
   return wrapSpan(span);
 }
 
-export function startTurnSpan(): SpanHandle {
+export function startTurnSpan(attrs?: Record<string, string>): SpanHandle {
   const span = trace.getTracer(TRACER_NAME).startSpan("gen_ai.chat", {
     attributes: {
       "gen_ai.operation.name": "chat",
+      ...attrs,
     },
   });
   return wrapSpan(span);

@@ -68,6 +68,7 @@
         "@zox/hooks": "workspace:*",
         "@zox/memory": "workspace:*",
         "@zox/providers": "workspace:*",
+        "@zox/skills": "workspace:*",
         "@zox/tools": "workspace:*",
       },
       "devDependencies": {
@@ -179,6 +180,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@zox/core": "workspace:*",
+        "@zox/skills": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "1.4.2",

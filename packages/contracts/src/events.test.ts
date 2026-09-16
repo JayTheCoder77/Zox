@@ -31,4 +31,13 @@ describe("zoxEventSchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  test("parses skills.changed", () => {
+    const event = zoxEventSchema.parse({
+      type: "skills.changed",
+      sessionId: "sess_1",
+      active: ["helper"],
+    });
+    expect(event).toMatchObject({ type: "skills.changed", active: ["helper"] });
+  });
 });

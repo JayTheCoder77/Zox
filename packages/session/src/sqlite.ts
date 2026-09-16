@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   type CreateSessionInput,
@@ -10,6 +10,7 @@ import {
   type StoredSession,
   type UsageRow,
 } from "@zox/core";
+import { parseSkillMarkdown } from "@zox/skills";
 import { migrate } from "./schema.ts";
 
 export type SqliteSessionStoreOptions = {
@@ -46,6 +47,7 @@ type SessionRow = {
   window_warned: number | null;
   usage_input_tokens: number;
   usage_output_tokens: number;
+  active_skills: string | null;
 };
 
 type MessageRow = {
@@ -98,6 +100,8 @@ const MESSAGE_ROLES = new Set<StoredMessage["role"]>([
   "system",
   "tool",
 ]);
+
+type ActiveSkill = NonNullable<StoredSession["activeSkills"]>[number];
 
 export class SqliteSessionStore implements SessionStore {
   readonly db: Database;
@@ -172,6 +176,10 @@ export class SqliteSessionStore implements SessionStore {
         session.systemNotes = parsed.filter((n) => typeof n === "string");
       }
     }
+    const activeSkills = restoreActiveSkills(row.active_skills);
+    if (activeSkills !== undefined) {
+      session.activeSkills = activeSkills;
+    }
     if (compactionRows.length > 0) {
       session.compactions = compactionRows.map((c) => ({
         fromMessageId: c.from_message_id,
@@ -190,8 +198,8 @@ export class SqliteSessionStore implements SessionStore {
           `INSERT INTO sessions (
             id, workspace_root, agent, model, status, sandbox_root, sandbox_mode,
             plan_json, prior_state_markdown, system_notes, last_trace_id, window_warned,
-            usage_input_tokens, usage_output_tokens, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            usage_input_tokens, usage_output_tokens, created_at, active_skills
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET
             workspace_root = excluded.workspace_root,
             agent = excluded.agent,
@@ -205,7 +213,8 @@ export class SqliteSessionStore implements SessionStore {
             last_trace_id = excluded.last_trace_id,
             window_warned = excluded.window_warned,
             usage_input_tokens = excluded.usage_input_tokens,
-            usage_output_tokens = excluded.usage_output_tokens`,
+            usage_output_tokens = excluded.usage_output_tokens,
+            active_skills = excluded.active_skills`,
         )
         .run(
           session.id,
@@ -229,6 +238,7 @@ export class SqliteSessionStore implements SessionStore {
           session.usage.inputTokens,
           session.usage.outputTokens,
           now,
+          serializeActiveSkills(session.activeSkills),
         );
 
       this.db
@@ -327,6 +337,56 @@ export class SqliteSessionStore implements SessionStore {
         return rec;
       });
   }
+}
+
+function serializeActiveSkills(
+  skills: StoredSession["activeSkills"],
+): string | null {
+  if (!skills?.length) return null;
+  return JSON.stringify(
+    skills.map((skill) => {
+      const stored: { name: string; body: string; path?: string } = {
+        name: skill.name,
+        body: skill.body,
+      };
+      if (skill.path !== undefined) stored.path = skill.path;
+      return stored;
+    }),
+  );
+}
+
+function restoreActiveSkills(raw: string | null): ActiveSkill[] | undefined {
+  if (raw === null) return undefined;
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.flatMap((item) => {
+    if (
+      typeof item !== "object" ||
+      item === null ||
+      typeof (item as { name?: unknown }).name !== "string" ||
+      typeof (item as { body?: unknown }).body !== "string"
+    ) {
+      return [];
+    }
+    const stored = item as { name: string; body: string; path?: unknown };
+    const skill: ActiveSkill = { name: stored.name, body: stored.body };
+    if (typeof stored.path === "string") {
+      skill.path = stored.path;
+      if (existsSync(stored.path)) {
+        try {
+          const fromDisk = parseSkillMarkdown(
+            readFileSync(stored.path, "utf8"),
+            stored.path,
+          );
+          skill.name = fromDisk.name;
+          skill.body = fromDisk.body;
+        } catch {
+          // Keep the stored body if the file cannot be re-read.
+        }
+      }
+    }
+    return [skill];
+  });
 }
 
 function fromMessageRow(row: MessageRow): StoredMessage {

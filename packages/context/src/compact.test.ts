@@ -16,6 +16,7 @@ describe("compactSession", () => {
     const { messages: out, compact } = await compactSession({
       messages,
       planJson: { step: 1 },
+      activeSkillNames: ["helper"],
       summarize: async (p) => {
         prompt = p;
         return "SUM";
@@ -28,6 +29,7 @@ describe("compactSession", () => {
     expect(compact.toMessageId).toBe("m3");
     expect(prompt).toContain("last goal");
     expect(prompt).toContain('"step":1');
+    expect(prompt).toContain("Active skills: helper");
     expect(prompt).toContain("x".repeat(TOOL_OUTPUT_MAX_CHARS));
     expect(prompt).not.toContain("x".repeat(TOOL_OUTPUT_MAX_CHARS + 1));
   });
@@ -72,5 +74,19 @@ describe("assembleProviderMessages", () => {
       content: "# Helper\nUse conventional commits.\n\nSecond skill",
     });
     expect(provider.slice(1)).toEqual(messages);
+  });
+
+  test("prepends skills catalog before active bodies", () => {
+    const messages = fourMessages();
+    const provider = assembleProviderMessages({
+      messages,
+      skillsCatalog: "Available skills\n- helper: help",
+      skillBodies: ["FULL BODY"],
+    });
+    expect(provider[0]).toMatchObject({
+      role: "system",
+      content: "Available skills\n- helper: help",
+    });
+    expect(provider[1]).toMatchObject({ role: "system", content: "FULL BODY" });
   });
 });

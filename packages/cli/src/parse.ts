@@ -8,6 +8,7 @@ export const SLASH_NAMES = [
   "clear",
   "mcp",
   "skill",
+  "skills",
   "cancel",
   "sandbox",
   "trace",

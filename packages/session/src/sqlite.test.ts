@@ -1,7 +1,10 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionStore, StoredSession, UsageRow } from "@zox/core";
+import { parseSkillMarkdown } from "@zox/skills";
 import { resolveSessionDbPath, SqliteSessionStore } from "./sqlite.ts";
 
 function usage(
@@ -78,6 +81,81 @@ describe("SqliteSessionStore", () => {
 
     const loaded = store.get(created.id);
     expect(loaded).toEqual(created);
+  });
+
+  test("persists and restores activeSkills", () => {
+    const store = new SqliteSessionStore({ path: ":memory:" });
+    const created = store.create({
+      workspaceRoot: "/tmp/ws",
+      agent: "build",
+      model: "mock/echo",
+    });
+    created.activeSkills = [
+      { name: "helper", body: "do x", path: "/ws/.zox/skills/helper/SKILL.md" },
+    ];
+    store.save(created);
+    const loaded = store.get(created.id);
+    expect(loaded?.activeSkills).toEqual(created.activeSkills);
+  });
+
+  test("get re-reads activeSkills body from disk when the skill file exists", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-session-skill-"));
+    try {
+      const skillDir = join(root, ".zox/skills", "helper");
+      await mkdir(skillDir, { recursive: true });
+      const skillPath = join(skillDir, "SKILL.md");
+      const diskMarkdown = `---
+name: helper
+description: live
+---
+current body from disk
+`;
+      await writeFile(skillPath, diskMarkdown, "utf8");
+      const parsed = parseSkillMarkdown(diskMarkdown, skillPath);
+
+      const store = new SqliteSessionStore({ path: ":memory:" });
+      const created = store.create({
+        workspaceRoot: root,
+        agent: "build",
+        model: "mock/echo",
+      });
+      created.activeSkills = [
+        { name: "stale-name", body: "stale stored body", path: skillPath },
+      ];
+      store.save(created);
+
+      const loaded = store.get(created.id);
+      expect(loaded?.activeSkills).toEqual([
+        { name: parsed.name, body: parsed.body, path: skillPath },
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("get keeps stored activeSkills body when the skill file is missing", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-session-skill-missing-"));
+    try {
+      const skillPath = join(root, ".zox/skills", "gone", "SKILL.md");
+      const store = new SqliteSessionStore({ path: ":memory:" });
+      const created = store.create({
+        workspaceRoot: root,
+        agent: "build",
+        model: "mock/echo",
+      });
+      const stored = {
+        name: "gone",
+        body: "keep this stored body",
+        path: skillPath,
+      };
+      created.activeSkills = [stored];
+      store.save(created);
+
+      const loaded = store.get(created.id);
+      expect(loaded?.activeSkills).toEqual([stored]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("returns undefined for unknown ids", () => {
@@ -201,7 +279,7 @@ describe("SqliteSessionStore schema_migrations", () => {
       )
       .all()
       .map((row) => row.version);
-    expect(versions).toEqual([1, 2]);
+    expect(versions).toEqual([1, 2, 3]);
     expect(store.db).toBeInstanceOf(Database);
   });
 });

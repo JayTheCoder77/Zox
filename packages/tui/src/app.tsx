@@ -65,6 +65,7 @@ export function ZoxApp(props: ZoxAppProps) {
     contextWindowKnown: false,
     inputTokens: 0,
     outputTokens: 0,
+    activeSkills: [] as string[],
   });
 
   const appendEntry = useCallback((entry: TranscriptEntry) => {
@@ -136,6 +137,12 @@ export function ZoxApp(props: ZoxAppProps) {
           run,
         });
       }
+      if (event.type === "skills.changed") {
+        setStatus((prev) => ({
+          ...prev,
+          activeSkills: event.active,
+        }));
+      }
       if (event.type === "error") {
         appendEntry({
           kind: "system",
@@ -160,6 +167,8 @@ export function ZoxApp(props: ZoxAppProps) {
         for await (const event of run.events()) {
           await handleEvent(event, run);
         }
+        const names = await session.skills.active();
+        setStatus((prev) => ({ ...prev, activeSkills: names }));
       } finally {
         setBusy(false);
       }
@@ -175,10 +184,12 @@ export function ZoxApp(props: ZoxAppProps) {
 
     const slash = parseSlash(text);
     if (slash) {
+      let current = session;
       await executeSlash(slash, {
         client: props.client,
-        getSession: () => session,
+        getSession: () => current,
         setSession: (next) => {
+          current = next;
           setSession(next);
           setEntries([]);
         },
@@ -193,6 +204,14 @@ export function ZoxApp(props: ZoxAppProps) {
         },
         onExit: () => exit(),
       });
+      if (
+        slash.name === "skill" ||
+        slash.name === "skills" ||
+        slash.name === "clear"
+      ) {
+        const names = await current.skills.active();
+        setStatus((prev) => ({ ...prev, activeSkills: names }));
+      }
       return;
     }
 

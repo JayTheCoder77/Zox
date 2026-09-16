@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 const V1 = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -85,5 +85,14 @@ export function migrate(db: Database): void {
       db.exec("ALTER TABLE sessions ADD COLUMN system_notes TEXT");
     }
     db.run("INSERT INTO schema_migrations (version) VALUES (?)", [2]);
+  }
+  if (current < 3) {
+    const columns = db
+      .query<{ name: string }, []>("PRAGMA table_info(sessions)")
+      .all();
+    if (!columns.some((col) => col.name === "active_skills")) {
+      db.exec("ALTER TABLE sessions ADD COLUMN active_skills TEXT");
+    }
+    db.run("INSERT INTO schema_migrations (version) VALUES (?)", [3]);
   }
 }

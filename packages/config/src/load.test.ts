@@ -16,6 +16,17 @@ describe("loadZoxConfig", () => {
     expect(config.model).toBe("openai/gpt-4.1");
     expect(config.agent).toBe("plan");
   });
+
+  test("parses skills catalogMaxSkills from project config", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-cfg-"));
+    await mkdir(join(root, ".zox"), { recursive: true });
+    await writeFile(
+      join(root, ".zox", "config.json"),
+      JSON.stringify({ skills: { catalogMaxSkills: 3 } }),
+    );
+    const config = loadZoxConfig(root);
+    expect(config.skills?.catalogMaxSkills).toBe(3);
+  });
 });
 
 describe("resolveConfigEnv", () => {

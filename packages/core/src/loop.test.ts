@@ -497,4 +497,55 @@ describe("runTurn", () => {
       ),
     ).toBe(true);
   });
+
+  test("skill tool activation keeps the body on the next provider call", async () => {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const root = await mkdtemp(join(tmpdir(), "zox-loop-skill-"));
+    await mkdir(join(root, ".zox/skills/helper"), { recursive: true });
+    await writeFile(
+      join(root, ".zox/skills/helper/SKILL.md"),
+      "---\nname: helper\ndescription: help\n---\nALWAYS conventional commits.\n",
+    );
+    let round = 0;
+    let secondRound = "";
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* (params) {
+            round += 1;
+            if (round === 1) {
+              yield {
+                type: "tool-call",
+                id: "tc1",
+                name: "skill",
+                arguments: { name: "helper" },
+              };
+            } else {
+              secondRound = params.messages
+                .map((m) => ("content" in m ? String(m.content) : ""))
+                .join("\n");
+              yield { type: "text-delta", text: "ok" };
+            }
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const tools = new ToolRegistry();
+    for (const tool of createBuiltinTools()) tools.register(tool);
+    const sess = session();
+    sess.workspaceRoot = root;
+    sess.sandboxRoot = root;
+    for await (const _e of runTurn({
+      session: sess,
+      userContent: "use the helper skill",
+      router,
+      tools,
+    })) {
+      /* drain */
+    }
+    expect(sess.activeSkills?.some((s) => s.name === "helper")).toBe(true);
+    expect(secondRound).toContain("ALWAYS conventional commits");
+  });
 });

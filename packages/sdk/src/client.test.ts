@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { MemorySessionStore } from "@zox/core";
 import { createMockAdapter, createProviderRouter } from "@zox/providers";
 import { createApp } from "@zox/server";
@@ -156,6 +159,58 @@ describe("createZoxClient", () => {
       const { models } = await client.models.list();
       expect(Array.isArray(models)).toBe(true);
       expect(models.length).toBeGreaterThan(0);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("list → load → send includes skill prefix", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-sdk-skills-"));
+    await Bun.write(
+      join(root, ".zox/skills/helper/SKILL.md"),
+      "---\nname: helper\ndescription: help\n---\nALWAYS conventional commits.\n",
+    );
+    let sawPrefix = false;
+    const hono = testApp({
+      token: "sdk-token",
+      router: createProviderRouter({
+        adapters: [
+          createMockAdapter({
+            script: async function* (params) {
+              sawPrefix = params.messages.some(
+                (m) =>
+                  m.role === "system" &&
+                  String("content" in m ? m.content : "").includes(
+                    "ALWAYS conventional commits",
+                  ),
+              );
+              yield { type: "text-delta", text: "ok" };
+              yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+              yield { type: "done" };
+            },
+          }),
+        ],
+      }),
+    });
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: hono.fetch,
+    });
+    try {
+      const client = createZoxClient({
+        baseUrl: `http://127.0.0.1:${server.port}`,
+        token: "sdk-token",
+      });
+      const catalog = await client.skills.list(root);
+      expect(catalog.skills.some((s) => s.name === "helper")).toBe(true);
+      const session = await client.sessions.create({ workspaceRoot: root });
+      await session.skills.load("helper");
+      expect(await session.skills.active()).toEqual(["helper"]);
+      for await (const _ of session.send("hi").events()) {
+        /* drain */
+      }
+      expect(sawPrefix).toBe(true);
     } finally {
       server.stop(true);
     }

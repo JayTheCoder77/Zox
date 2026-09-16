@@ -104,6 +104,12 @@ export const errorEventSchema = z.object({
   code: z.string().optional(),
 });
 
+export const skillsChangedEventSchema = z.object({
+  type: z.literal("skills.changed"),
+  sessionId: z.string(),
+  active: z.array(z.string()),
+});
+
 export const zoxEventSchema = z.discriminatedUnion("type", [
   sessionStatusEventSchema,
   messageDeltaEventSchema,
@@ -117,6 +123,7 @@ export const zoxEventSchema = z.discriminatedUnion("type", [
   contextOverflowEventSchema,
   contextCompactedEventSchema,
   errorEventSchema,
+  skillsChangedEventSchema,
 ]);
 
 export type ZoxEvent = z.infer<typeof zoxEventSchema>;

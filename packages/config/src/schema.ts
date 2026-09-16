@@ -36,6 +36,9 @@ export const zoxConfigSchema = z.object({
     .object({
       autoLoad: z.array(z.string()).optional(),
       loadPaths: z.array(z.string()).optional(),
+      catalog: z.boolean().optional(),
+      catalogMaxSkills: z.number().int().positive().optional(),
+      catalogMaxDescriptionChars: z.number().int().positive().optional(),
     })
     .optional(),
   mcp: z

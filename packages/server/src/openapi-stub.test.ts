@@ -40,6 +40,13 @@ describe("openapi stub", () => {
     }
   });
 
+  test("includes Phase 1.5 path keys", () => {
+    const paths = ["/skills", "/sessions/{id}/skills"];
+    for (const path of paths) {
+      expect(yaml).toContain(`${path}:`);
+    }
+  });
+
   test("uses Bearer auth", () => {
     expect(yaml).toContain("bearerAuth:");
     expect(yaml).toContain("Bearer");

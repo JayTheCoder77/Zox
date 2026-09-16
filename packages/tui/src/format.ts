@@ -7,6 +7,7 @@ export type StatusBarInput = {
   contextWindowKnown: boolean;
   inputTokens: number;
   outputTokens: number;
+  activeSkills?: string[];
 };
 
 const MAX_SUMMARY_CHARS = 160;
@@ -35,6 +36,7 @@ export function formatStatus(input: StatusBarInput): string {
     contextWindowKnown,
     inputTokens,
     outputTokens,
+    activeSkills,
   } = input;
   const window = contextWindow > 0 ? contextWindow : DEFAULT_CONTEXT_WINDOW;
   const pct = Math.min(999, Math.round((contextEstimated / window) * 100));
@@ -44,7 +46,10 @@ export function formatStatus(input: StatusBarInput): string {
   const ctx = `ctx ${formatCompactTokens(contextEstimated)}/${windowLabel} (${pct}%)`;
   const usage = `in ${formatCompactTokens(inputTokens)} out ${formatCompactTokens(outputTokens)}`;
   const shortCwd = cwd.length > 28 ? `…${cwd.slice(-27)}` : cwd;
-  return `${model} · ${agent} · ${ctx} · ${usage} · ${shortCwd}`;
+  const skills = activeSkills?.length
+    ? ` · skills: ${activeSkills.join(", ")}`
+    : "";
+  return `${model} · ${agent} · ${ctx} · ${usage} · ${shortCwd}${skills}`;
 }
 
 function truncateSummary(text: string, max = MAX_SUMMARY_CHARS): string {

@@ -1,6 +1,7 @@
 import { estimateSession } from "@zox/context";
 import {
   createSessionRequestSchema,
+  mutateSessionSkillsRequestSchema,
   sendMessageRequestSchema,
   type ZoxEvent,
 } from "@zox/contracts";
@@ -24,7 +25,13 @@ import {
   ensureWorktree,
   removeWorktree,
 } from "@zox/sandbox";
-import { findSkill } from "@zox/skills";
+import {
+  activateSkill,
+  deactivateSkill,
+  discoverSkills,
+  findSkill,
+  type SkillDiscoveryOptions,
+} from "@zox/skills";
 import { createBuiltinTools, ToolRegistry } from "@zox/tools";
 import { Hono } from "hono";
 import { getConnInfo } from "hono/bun";
@@ -44,7 +51,13 @@ export type AppConfig = {
     metrics?: boolean | { public?: boolean };
     recordContent?: boolean;
   };
-  skills?: { autoLoad?: string[]; loadPaths?: string[] };
+  skills?: {
+    autoLoad?: string[];
+    loadPaths?: string[];
+    catalog?: boolean;
+    catalogMaxSkills?: number;
+    catalogMaxDescriptionChars?: number;
+  };
   hooks?: HooksFile;
   worktreeCleanup?: "keep" | "remove";
 };
@@ -68,6 +81,7 @@ const COMMAND_NAMES = [
   "clear",
   "mcp",
   "skill",
+  "skills",
   "cancel",
   "sandbox",
   "trace",
@@ -111,7 +125,6 @@ export function createApp(opts: {
   const permissionDecisions = new Map<string, boolean>();
   const sessionPermissionIds = new Map<string, Set<string>>();
   const turnAborts = new Map<string, AbortController>();
-  const activeSkills = new Map<string, Array<{ name: string; body: string }>>();
   const processUsage = { inputTokens: 0, outputTokens: 0 };
 
   const permission: PermissionResponder = {
@@ -163,12 +176,24 @@ export function createApp(opts: {
         400,
       );
     }
-    const loaded = loadAutoSkills(session.workspaceRoot, config.skills);
-    if (loaded.length > 0) {
-      activeSkills.set(session.id, loaded);
-      session.activeSkills = loaded;
-    }
+    loadAutoSkills(session, config.skills);
     opts.store.save(session);
+    const autoLoaded = session.activeSkills ?? [];
+    if (autoLoaded.length > 0) {
+      if (opts.hooks) {
+        await opts.hooks.run("InstructionsLoaded", {
+          session: { id: session.id, workspaceRoot: session.workspaceRoot },
+          skills: autoLoaded.map((skill) => ({
+            name: skill.name,
+            path: skill.path,
+          })),
+        });
+      }
+      for (const _skill of autoLoaded) {
+        opts.observability?.recordSkillLoad("auto");
+      }
+      publishSkillsChanged(session);
+    }
     if (opts.hooks) {
       const start = await opts.hooks.run("SessionStart", {
         matcher: "startup",
@@ -348,7 +373,6 @@ export function createApp(opts: {
         },
       });
     }
-    activeSkills.delete(session.id);
     opts.store.save(session);
     return c.json({ ok: true });
   });
@@ -359,8 +383,54 @@ export function createApp(opts: {
     return c.json({
       planJson: session.planJson,
       priorStateMarkdown: session.priorStateMarkdown ?? "",
-      activeSkills: activeSkills.get(session.id) ?? [],
+      activeSkills: session.activeSkills ?? [],
     });
+  });
+
+  app.get("/skills", (c) => {
+    const workspaceRoot = c.req.query("workspaceRoot");
+    if (!workspaceRoot) {
+      return c.json({ error: "workspaceRoot required" }, 400);
+    }
+    const skills = discoverSkills({
+      workspaceRoot,
+      loadPaths: config.skills?.loadPaths,
+    }).map((skill) => ({
+      name: skill.name,
+      description: skill.description,
+      path: skill.path,
+    }));
+    return c.json({ skills });
+  });
+
+  app.get("/sessions/:id/skills", (c) => {
+    const session = opts.store.get(c.req.param("id"));
+    if (!session) return c.json({ error: "Not found" }, 404);
+    return c.json(sessionSkillsPayload(session));
+  });
+
+  app.post("/sessions/:id/skills", async (c) => {
+    const session = opts.store.get(c.req.param("id"));
+    if (!session) return c.json({ error: "Not found" }, 404);
+    let json: unknown;
+    try {
+      json = await c.req.json();
+    } catch {
+      return c.json({ error: "Bad request" }, 400);
+    }
+    const parsed = mutateSessionSkillsRequestSchema.safeParse(json);
+    if (!parsed.success) {
+      return c.json({ error: "Bad request", issues: parsed.error.issues }, 400);
+    }
+    if (parsed.data.action === "load") {
+      const result = await loadSessionSkill(session, parsed.data.name, "slash");
+      if ("error" in result) {
+        return c.json({ error: result.error }, 400);
+      }
+    } else {
+      unloadSessionSkill(session, parsed.data.name);
+    }
+    return c.json(sessionSkillsPayload(session));
   });
 
   app.get("/models", (c) => {
@@ -538,8 +608,6 @@ export function createApp(opts: {
     abort: AbortController,
   ) {
     for (const tool of mcp.asZoxTools()) tools.register(tool);
-    const loadedSkills = activeSkills.get(session.id);
-    if (loadedSkills) session.activeSkills = loadedSkills;
     const wait: PermissionResponder = {
       wait(requestId) {
         let ids = sessionPermissionIds.get(session.id);
@@ -550,6 +618,13 @@ export function createApp(opts: {
         ids.add(requestId);
         return permission.wait(requestId);
       },
+    };
+    let previousSkillNames = activeSkillNamesKey(session);
+    const publishIfSkillsChanged = () => {
+      const next = activeSkillNamesKey(session);
+      if (next === previousSkillNames) return;
+      previousSkillNames = next;
+      publishSkillsChanged(session);
     };
     for await (const event of runTurn({
       session,
@@ -566,6 +641,12 @@ export function createApp(opts: {
       permission: wait,
       hooks: opts.hooks,
       observability: opts.observability,
+      skillLoadPaths: config.skills?.loadPaths,
+      skillsConfig: {
+        catalog: config.skills?.catalog,
+        catalogMaxSkills: config.skills?.catalogMaxSkills,
+        catalogMaxDescriptionChars: config.skills?.catalogMaxDescriptionChars,
+      },
     })) {
       if (event.type === "usage.turn") {
         processUsage.inputTokens += event.inputTokens;
@@ -585,9 +666,11 @@ export function createApp(opts: {
       }
       bus.publish(session.id, event);
       opts.store.save(session);
+      publishIfSkillsChanged();
     }
     turnAborts.delete(session.id);
     opts.store.save(session);
+    publishIfSkillsChanged();
   }
 
   async function runCompact(session: StoredSession) {
@@ -636,27 +719,55 @@ export function createApp(opts: {
         session.priorStateMarkdown = undefined;
         session.systemNotes = [];
         session.usage = { inputTokens: 0, outputTokens: 0 };
-        activeSkills.delete(session.id);
         session.activeSkills = [];
         opts.store.save(session);
+        publishSkillsChanged(session);
         return { ok: true };
       case "mcp":
         return dispatchMcp(args);
       case "skill": {
+        if (args[0] === "-u") {
+          const skillName = args[1];
+          if (!skillName) return { error: "skill name required" };
+          unloadSessionSkill(session, skillName);
+          return { ok: true };
+        }
         const skillName = args[0];
         if (!skillName) return { error: "skill name required" };
-        const skill = findSkill(skillName, {
-          workspaceRoot: session.workspaceRoot,
-        });
-        if (!skill) return { error: `Skill not found: ${skillName}` };
-        const loaded = activeSkills.get(session.id) ?? [];
-        if (!loaded.some((entry) => entry.name === skillName)) {
-          loaded.push({ name: skillName, body: skill.body });
+        const result = await loadSessionSkill(session, skillName, "slash");
+        if ("error" in result) return result;
+        const loaded = (session.activeSkills ?? []).find(
+          (entry) => entry.name === skillName,
+        );
+        return { ok: true, skill: skillName, body: loaded?.body };
+      }
+      case "skills": {
+        if (args[0] === "reload") {
+          session.activeSkills = (session.activeSkills ?? []).flatMap(
+            (active) => {
+              const found = findSkill(active.name, discoveryOpts(session));
+              return found
+                ? [
+                    {
+                      name: found.name,
+                      body: found.body,
+                      path: found.path,
+                    },
+                  ]
+                : [];
+            },
+          );
+          opts.store.save(session);
+          publishSkillsChanged(session);
+          return sessionSkillsList(session);
         }
-        activeSkills.set(session.id, loaded);
-        session.activeSkills = loaded;
-        opts.store.save(session);
-        return { ok: true, skill: skillName, body: skill.body };
+        if (args[0] === "unload") {
+          const skillName = args[1];
+          if (!skillName) return { error: "skill name required" };
+          unloadSessionSkill(session, skillName);
+          return { ok: true };
+        }
+        return sessionSkillsList(session);
       }
       case "cancel":
         turnAborts.get(session.id)?.abort();
@@ -699,6 +810,84 @@ export function createApp(opts: {
     const listed = mcp.list().find((server) => server.name === name);
     if (!listed) return;
     for (const toolName of listed.tools) tools.unregister(toolName);
+  }
+
+  function discoveryOpts(session: StoredSession): SkillDiscoveryOptions {
+    return {
+      workspaceRoot: session.workspaceRoot,
+      loadPaths: config.skills?.loadPaths,
+    };
+  }
+
+  function activeSkillNamesKey(session: StoredSession): string {
+    return (session.activeSkills ?? []).map((skill) => skill.name).join("\0");
+  }
+
+  function publishSkillsChanged(session: StoredSession): void {
+    bus.publish(session.id, {
+      type: "skills.changed",
+      sessionId: session.id,
+      active: (session.activeSkills ?? []).map((s) => s.name),
+    });
+  }
+
+  async function loadSessionSkill(
+    session: StoredSession,
+    name: string,
+    source: "slash" | "auto",
+  ): Promise<{ ok: true } | { error: string }> {
+    const skill = findSkill(name, discoveryOpts(session));
+    if (!skill) return { error: `Skill not found: ${name}` };
+    session.activeSkills = activateSkill(session.activeSkills ?? [], {
+      name: skill.name,
+      body: skill.body,
+      path: skill.path,
+    });
+    opts.store.save(session);
+    if (opts.hooks) {
+      await opts.hooks.run("InstructionsLoaded", {
+        session: { id: session.id, workspaceRoot: session.workspaceRoot },
+        skills: [{ name: skill.name, path: skill.path }],
+      });
+    }
+    opts.observability?.recordSkillLoad(source);
+    publishSkillsChanged(session);
+    return { ok: true };
+  }
+
+  function unloadSessionSkill(session: StoredSession, name: string): void {
+    session.activeSkills = deactivateSkill(session.activeSkills ?? [], name);
+    opts.store.save(session);
+    publishSkillsChanged(session);
+  }
+
+  function sessionSkillsPayload(session: StoredSession) {
+    const activeNames = new Set(
+      (session.activeSkills ?? []).map((skill) => skill.name),
+    );
+    return {
+      catalog: discoverSkills(discoveryOpts(session)).map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+        path: skill.path,
+        loaded: activeNames.has(skill.name),
+      })),
+      active: session.activeSkills ?? [],
+    };
+  }
+
+  function sessionSkillsList(session: StoredSession) {
+    const activeNames = new Set(
+      (session.activeSkills ?? []).map((skill) => skill.name),
+    );
+    return {
+      skills: discoverSkills(discoveryOpts(session)).map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+        path: skill.path,
+        loaded: activeNames.has(skill.name),
+      })),
+    };
   }
 }
 
@@ -769,18 +958,21 @@ function metricsPublic(config: AppConfig): boolean {
 }
 
 function loadAutoSkills(
-  workspaceRoot: string,
+  session: StoredSession,
   skills?: AppConfig["skills"],
-): Array<{ name: string; body: string }> {
-  const loaded: Array<{ name: string; body: string }> = [];
+): void {
   for (const name of skills?.autoLoad ?? []) {
     const skill = findSkill(name, {
-      workspaceRoot,
+      workspaceRoot: session.workspaceRoot,
       loadPaths: skills?.loadPaths,
     });
-    if (skill) loaded.push({ name: skill.name, body: skill.body });
+    if (!skill) continue;
+    session.activeSkills = activateSkill(session.activeSkills ?? [], {
+      name: skill.name,
+      body: skill.body,
+      path: skill.path,
+    });
   }
-  return loaded;
 }
 
 function metricsClientIsLocal(c: {

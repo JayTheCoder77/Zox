@@ -30,6 +30,7 @@ export async function* compactSessionTurn(opts: {
   const { compact } = await compactSession({
     messages: session.messages,
     planJson: session.planJson,
+    activeSkillNames: session.activeSkills?.map((s) => s.name),
     summarize: opts.summarize,
   });
 

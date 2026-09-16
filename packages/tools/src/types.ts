@@ -12,6 +12,8 @@ export type ToolContext = {
   sandboxRoot: string;
   maxToolOutputChars: number;
   session: { id: string; workspaceRoot: string; agent: string };
+  loadPaths?: string[];
+  activateSkill?: (skill: { name: string; body: string; path: string }) => void;
 };
 
 export type ZoxTool = {

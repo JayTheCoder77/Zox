@@ -12,6 +12,7 @@
     "@zox/hooks": "workspace:*",
     "@zox/memory": "workspace:*",
     "@zox/providers": "workspace:*",
+    "@zox/skills": "workspace:*",
     "@zox/tools": "workspace:*"
   },
   "devDependencies": {

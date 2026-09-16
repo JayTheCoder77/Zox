@@ -15,6 +15,7 @@ export type CompactMessage = {
 export async function compactSession(opts: {
   messages: CompactMessage[];
   planJson?: unknown;
+  activeSkillNames?: string[];
   summarize: (prompt: string) => Promise<string>;
 }): Promise<{ messages: CompactMessage[]; compact: CompactResult }> {
   const lastUserIndex = findLastUserIndex(opts.messages);
@@ -33,6 +34,7 @@ export async function compactSession(opts: {
     range,
     lastUserGoal: lastUser.content,
     planJson: opts.planJson,
+    activeSkillNames: opts.activeSkillNames,
   });
   const summary = await opts.summarize(prompt);
 
@@ -58,6 +60,7 @@ function buildCompactionPrompt(input: {
   range: CompactMessage[];
   lastUserGoal: string;
   planJson?: unknown;
+  activeSkillNames?: string[];
 }): string {
   const lines: string[] = [
     "Summarize the conversation transcript below for continuation.",
@@ -66,6 +69,9 @@ function buildCompactionPrompt(input: {
   ];
   if (input.planJson !== undefined) {
     lines.push("", `Plan JSON: ${JSON.stringify(input.planJson)}`);
+  }
+  if (input.activeSkillNames?.length) {
+    lines.push("", `Active skills: ${input.activeSkillNames.join(", ")}`);
   }
   lines.push("", "Transcript:");
   for (const message of input.range) {
