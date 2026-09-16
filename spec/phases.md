@@ -18,34 +18,49 @@ Option **C** — TUI, headless server, and SDK share one OpenAPI contract; paral
 
 **Exit criteria:** daily-usable local coding session with BYOK, tools, MCP, skills, slash commands.
 
-- [ ] All BYOK providers listed in [providers.md](./providers.md)
-- [ ] Tool registry: read, write, edit, bash, grep, glob, ls
-- [ ] Permission gate + TUI approve/deny
-- [ ] Token usage per turn + `/usage`
-- [ ] Context estimation + manual `/compact`
-- [ ] MCP stdio servers + `/mcp`
-- [ ] Skills loader + `/skill`
-- [ ] Slash table from [tools-extensibility.md](./tools-extensibility.md)
-- [ ] CLI embedded server + `zox serve`
-- [ ] TUI: transcript, input, status bar tokens
-- [ ] SQLite session persistence
-- [ ] Sandbox **worktree default** + tier 0 `host` opt-in; path jail + denylist + output caps ([sandbox.md](./sandbox.md))
-- [ ] Hook runner: MVP eight events + example guards ([hooks.md](./hooks.md))
-- [ ] OTel traces + basic Prometheus metrics ([observability.md](./observability.md))
-- [ ] Plan memory via `todowrite` + persist `plan_json` ([memory.md](./memory.md))
-- [ ] `SessionEnd` auto-summarize → `.zox/memory/auto/` (default on)
+**Status:** landed (see `spec/README.md`).
+
+- [x] All BYOK providers listed in [providers.md](./providers.md)
+- [x] Tool registry: read, write, edit, bash, grep, glob, ls
+- [x] Permission gate + TUI approve/deny
+- [x] Token usage per turn + `/usage`
+- [x] Context estimation + manual `/compact`
+- [x] MCP stdio servers + `/mcp`
+- [x] Skills loader + `/skill` + `skill` tool + `skills.autoLoad` (baseline — see [skills.md](./skills.md))
+- [x] Slash table from [tools-extensibility.md](./tools-extensibility.md)
+- [x] CLI embedded server + `zox serve`
+- [x] TUI: transcript, input, status bar tokens
+- [x] SQLite session persistence
+- [x] Sandbox **worktree default** + tier 0 `host` opt-in; path jail + denylist + output caps ([sandbox.md](./sandbox.md))
+- [x] Hook runner: MVP eight events + example guards ([hooks.md](./hooks.md))
+- [x] OTel traces + basic Prometheus metrics ([observability.md](./observability.md))
+- [x] Plan memory via `todowrite` + persist `plan_json` ([memory.md](./memory.md))
+- [x] `plan` / `build` agent profiles
+- [x] `SessionEnd` auto-summarize → `.zox/memory/auto/` (default on)
 
 ## Phase 1.5 — Agents and quality (week 6–7)
 
-**Exit criteria:** plan/build switch; auto-compaction; SDK e2e test suite.
+**Exit criteria:** plan/build workflows feel complete; auto-compaction; skills are first-class in the harness; SDK e2e test suite.
 
-- [ ] `plan` agent profile
+### Skills harness ([skills.md](./skills.md))
+
+- [ ] Model-facing **skills catalog** (name + description index each session/turn)
+- [ ] **`skill` tool activates skills** — same `activeSkills` state as `/skill`; `loadPaths` wired everywhere
+- [ ] **`/skills`**, **`/skills reload`**, unload via **`/skill -u <name>`**
+- [ ] **HTTP + SDK**: `GET /skills`, session skills get/load/unload; optional `skills.changed` SSE
+- [ ] **Persist `activeSkills`** in SQLite; restore on session resume
+- [ ] **TUI**: show active skills; list command output in transcript
+- [ ] **`InstructionsLoaded` hook** + OTel `zox.skills.active`
+- [ ] Protected skill content under future prune policy
+
+### Other Phase 1.5
+
 - [ ] Auto-compaction on overflow
-- [ ] `webfetch`, `todowrite`
+- [ ] `webfetch`
 - [ ] Session resume + list
 - [ ] SDK permission helpers + `waitForIdle`
 - [ ] Contract tests vs OpenAPI
-- [ ] `PreCompact` + `SessionStart(compact)` prior-state reinjection
+- [ ] `PreCompact` + `SessionStart(compact)` prior-state reinjection (skills named in compact summary)
 - [ ] `budget.preCompactTokenThreshold` soft compaction
 - [ ] Durable memory: auto-summarize tuning, `/remember`, FTS search, `memory_write` tool
 
@@ -73,7 +88,7 @@ Option **C** — TUI, headless server, and SDK share one OpenAPI contract; paral
 | SDK | yes | yes | yes |
 | BYOK | yes | yes | yes |
 | MCP | yes | yes | OAuth |
-| Skills | yes | yes | plugins |
+| Skills | yes | baseline load | catalog + tool parity + persist |
 | Slash commands | yes | yes | custom |
 | Compaction | yes | manual | auto |
 | Prune | yes | no | yes |

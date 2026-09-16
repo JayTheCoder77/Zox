@@ -11,6 +11,7 @@ Zox is a **Bun-first** monorepo and an npm-publishable coding agent harness (Ope
 | [context.md](./context.md) | Context assembly, tokens, compaction, pruning |
 | [providers.md](./providers.md) | BYOK, routing, streaming, usage accounting |
 | [tools-extensibility.md](./tools-extensibility.md) | Built-in tools, MCP, skills, slash commands |
+| [skills.md](./skills.md) | Skill discovery, activation, catalog, Phase 1.5 harness |
 | [sandbox.md](./sandbox.md) | Sandbox tiers, path jail, denylist, observation limits |
 | [hooks.md](./hooks.md) | Lifecycle hooks (PreToolUse, PreCompact, etc.) |
 | [observability.md](./observability.md) | OpenTelemetry GenAI spans, Prometheus, budgets |

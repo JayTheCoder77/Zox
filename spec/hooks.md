@@ -154,7 +154,7 @@ Additional Zox lifecycle events (same config file, `zoxHooksVersion` bump when s
 - `PostToolUseFailure`, `PostToolBatch`
 - `UserPromptExpansion` (slash → prompt)
 - `SubagentStart`, `SubagentStop`
-- `InstructionsLoaded` (audit `AGENTS.md` / skills loaded)
+- `InstructionsLoaded` (audit `AGENTS.md` / skills loaded — see [skills.md](./skills.md))
 
 No compatibility layer for other products’ hook config files — only Zox `hooks.json`.
 
