@@ -4,6 +4,7 @@ export type AgentProfile = {
   name: "build" | "plan" | string;
   tools: string[];
   ruleset: PermissionRuleset;
+  systemOverlay: string;
 };
 
 const BUILD_TOOLS = [
@@ -52,9 +53,16 @@ function ruleset(
   ]);
 }
 
+const BUILD_OVERLAY =
+  "You are the build agent. Your job is to implement in the workspace using tools. Use write, edit, and bash when the task requires it and permission allows. Ask before destructive actions.";
+
+const PLAN_OVERLAY =
+  "You are the plan agent. Investigate with read-only tools. Persist the plan with todowrite. Do not write, edit, or run shell commands.";
+
 const PROFILES: Record<"build" | "plan", AgentProfile> = {
   build: {
     name: "build",
+    systemOverlay: BUILD_OVERLAY,
     tools: BUILD_TOOLS,
     ruleset: ruleset(
       [
@@ -72,6 +80,7 @@ const PROFILES: Record<"build" | "plan", AgentProfile> = {
   },
   plan: {
     name: "plan",
+    systemOverlay: PLAN_OVERLAY,
     tools: PLAN_TOOLS,
     ruleset: ruleset(PLAN_TOOLS, ["write", "edit", "bash"]),
   },

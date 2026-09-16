@@ -498,6 +498,87 @@ describe("runTurn", () => {
     ).toBe(true);
   });
 
+  test("injects family system prompt from the model id", async () => {
+    let providerMessages: Array<{ role: string; content: string }> = [];
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* (params) {
+            providerMessages = params.messages.map((m) => ({
+              role: m.role,
+              content: "content" in m ? String(m.content) : "",
+            }));
+            yield { type: "text-delta", text: "ok" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const sess = session();
+    sess.model = "mock/claude-3.5-sonnet";
+    for await (const _e of runTurn({
+      session: sess,
+      userContent: "hi",
+      router,
+      tools: new ToolRegistry(),
+    })) {
+      /* drain */
+    }
+    expect(providerMessages[0]).toMatchObject({ role: "system" });
+    expect(providerMessages[0]?.content).toContain("Zox family: anthropic");
+    expect(providerMessages.some((m) => m.content.includes("implement"))).toBe(
+      true,
+    );
+  });
+
+  test("injects plan overlay and AGENTS.md from the workspace", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-loop-prompt-"));
+    await Bun.write(join(root, "AGENTS.md"), "USE CONVENTIONAL COMMITS");
+    await Bun.write(join(root, "EXTRA.md"), "EXTRA RULES FILE");
+    let providerMessages: Array<{ role: string; content: string }> = [];
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* (params) {
+            providerMessages = params.messages.map((m) => ({
+              role: m.role,
+              content: "content" in m ? String(m.content) : "",
+            }));
+            yield { type: "text-delta", text: "ok" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const sess = session();
+    sess.agent = "plan";
+    sess.workspaceRoot = root;
+    sess.sandboxRoot = join(root, ".zox/worktrees/sess_1");
+    sess.model = "mock/llama-3.3-70b-versatile";
+    for await (const _e of runTurn({
+      session: sess,
+      userContent: "plan it",
+      router,
+      tools: new ToolRegistry(),
+      instructionFiles: ["EXTRA.md"],
+    })) {
+      /* drain */
+    }
+    const joined = providerMessages
+      .filter((m) => m.role === "system")
+      .map((m) => m.content)
+      .join("\n");
+    expect(joined).toContain("Zox family: default");
+    expect(joined).toContain("todowrite");
+    expect(joined).toContain("read-only");
+    expect(joined).toContain("USE CONVENTIONAL COMMITS");
+    expect(joined).toContain("EXTRA RULES FILE");
+    expect(joined).toContain(`Workspace root folder: ${root}`);
+    expect(joined).not.toContain("implement in the workspace");
+  });
+
   test("skill tool activation keeps the body on the next provider call", async () => {
     const { mkdir, writeFile } = await import("node:fs/promises");
     const root = await mkdtemp(join(tmpdir(), "zox-loop-skill-"));
@@ -639,7 +720,7 @@ describe("runTurn", () => {
       tools: new ToolRegistry(),
       context: {
         windowTokens: 100,
-        estimateTokens: (text) => text.length,
+        estimateTokens: (text) => (text.includes("old user") ? 1000 : 10),
       },
       onOverflow: async () => {
         overflowCalls += 1;

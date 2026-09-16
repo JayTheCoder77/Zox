@@ -17,6 +17,11 @@ const providerSchema = z.object({
 export const zoxConfigSchema = z.object({
   model: z.string().optional(),
   agent: z.string().optional(),
+  instructions: z
+    .object({
+      files: z.array(z.string().min(1)).optional(),
+    })
+    .optional(),
   sandbox: z
     .object({
       mode: z.enum(["host", "worktree", "container", "remote"]).optional(),

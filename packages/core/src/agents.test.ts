@@ -65,4 +65,17 @@ describe("getAgentProfile", () => {
       "Unknown agent profile: unknown",
     );
   });
+
+  test("build overlay tells the agent to implement", () => {
+    const overlay = getAgentProfile("build").systemOverlay;
+    expect(overlay).toContain("implement");
+    expect(overlay).toContain("write");
+  });
+
+  test("plan overlay tells the agent to investigate and use todowrite", () => {
+    const overlay = getAgentProfile("plan").systemOverlay;
+    expect(overlay).toContain("todowrite");
+    expect(overlay).toContain("read-only");
+    expect(overlay).not.toContain("implement in the workspace");
+  });
 });

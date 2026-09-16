@@ -109,4 +109,31 @@ describe("assembleProviderMessages", () => {
     });
     expect(provider.slice(2)).toEqual(messages);
   });
+
+  test("prepends family, agent, env, and project before session notes", () => {
+    const messages = fourMessages();
+    const provider = assembleProviderMessages({
+      messages,
+      familyPrompt: "FAMILY",
+      agentOverlay: "AGENT",
+      environment: "ENV",
+      projectInstructions: "PROJECT",
+      systemNotes: ["HOOK NOTE"],
+    });
+    expect(provider.map((m) => m.id)).toEqual([
+      "prompt:family",
+      "prompt:agent",
+      "prompt:env",
+      "prompt:project",
+      "hook:notes",
+      "m1",
+      "m2",
+      "m3",
+      "m4",
+    ]);
+    expect(provider[0]).toMatchObject({ role: "system", content: "FAMILY" });
+    expect(provider[1]).toMatchObject({ role: "system", content: "AGENT" });
+    expect(provider[2]).toMatchObject({ role: "system", content: "ENV" });
+    expect(provider[3]).toMatchObject({ role: "system", content: "PROJECT" });
+  });
 });

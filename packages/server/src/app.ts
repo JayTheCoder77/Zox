@@ -77,6 +77,7 @@ export type AppConfig = {
   tools?: {
     webfetch?: { allowedHosts?: string[]; maxBytes?: number };
   };
+  instructions?: { files?: string[] };
   hooks?: HooksFile;
   worktreeCleanup?: "keep" | "remove";
 };
@@ -843,6 +844,7 @@ export function createApp(opts: {
         catalogMaxSkills: config.skills?.catalogMaxSkills,
         catalogMaxDescriptionChars: config.skills?.catalogMaxDescriptionChars,
       },
+      instructionFiles: config.instructions?.files,
       preCompactTokenThreshold: config.budget?.preCompactTokenThreshold,
     })) {
       if (event.type === "usage.turn") {
