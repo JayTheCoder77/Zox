@@ -21,14 +21,22 @@ export const skillTool: ZoxTool = {
 
     const skill = findSkill(name, {
       workspaceRoot: ctx.session.workspaceRoot,
+      loadPaths: ctx.loadPaths,
     });
     if (!skill) {
       return toolError(`Skill not found: ${name}`, ctx.maxToolOutputChars);
     }
-
+    ctx.activateSkill?.({
+      name: skill.name,
+      body: skill.body,
+      path: skill.path,
+    });
     return {
       ok: true,
-      ...toolContent(skill.body, ctx.maxToolOutputChars),
+      ...toolContent(
+        `Loaded skill ${skill.name}. Instructions are now in session context.`,
+        ctx.maxToolOutputChars,
+      ),
     };
   },
 };

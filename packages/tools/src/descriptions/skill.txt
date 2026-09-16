@@ -1,1 +1,1 @@
-Load a user skill by name. Returns the skill markdown body (instructions) from SKILL.md discovered under the workspace `.zox/skills`, user config, or configured load paths.
+Load a user skill by name and activate it for the rest of the session. Discovers SKILL.md under the workspace `.zox/skills`, user config, or configured load paths.

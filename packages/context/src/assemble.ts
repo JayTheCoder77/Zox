@@ -10,6 +10,7 @@ export type ProviderMessage = {
 export function assembleProviderMessages<T extends ProviderMessage>(session: {
   messages: T[];
   compactions?: CompactResult[];
+  skillsCatalog?: string;
   skillBodies?: string[];
   priorStateMarkdown?: string;
   systemNotes?: string[];
@@ -28,6 +29,13 @@ export function assembleProviderMessages<T extends ProviderMessage>(session: {
       id: "hook:notes",
       role: "system",
       content: session.systemNotes.join("\n\n"),
+    } as T);
+  }
+  if (session.skillsCatalog?.trim()) {
+    prefixes.push({
+      id: "skill:catalog",
+      role: "system",
+      content: session.skillsCatalog,
     } as T);
   }
   if (session.skillBodies?.length) {

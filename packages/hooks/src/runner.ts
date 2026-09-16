@@ -14,6 +14,7 @@ const CANNOT_DENY = new Set<HookEvent>([
   "SessionStart",
   "PostToolUse",
   "SessionEnd",
+  "InstructionsLoaded",
 ]);
 
 export type RunHooksOpts = {
@@ -235,6 +236,17 @@ function hookInputFrom(event: HookEvent, payload: unknown): HookInput {
     };
   }
   if (typeof record.matcher === "string") input.matcher = record.matcher;
+  if (Array.isArray(record.skills)) {
+    input.skills = record.skills.flatMap((entry) => {
+      if (!isRecord(entry) || typeof entry.name !== "string") return [];
+      return [
+        {
+          name: entry.name,
+          path: typeof entry.path === "string" ? entry.path : undefined,
+        },
+      ];
+    });
+  }
   return input;
 }
 

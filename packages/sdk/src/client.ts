@@ -1,4 +1,9 @@
-import { createSessionResponseSchema, type ZoxEvent } from "@zox/contracts";
+import {
+  createSessionResponseSchema,
+  sessionSkillsResponseSchema,
+  workspaceSkillsResponseSchema,
+  type ZoxEvent,
+} from "@zox/contracts";
 import { iterateSse } from "./sse.ts";
 
 export function createZoxClient(opts: { baseUrl: string; token: string }) {
@@ -107,7 +112,32 @@ export function createZoxClient(opts: { baseUrl: string; token: string }) {
           throw new Error(`close failed: ${res.status}`);
         }
       },
+      skills: {
+        async list() {
+          const res = await fetch(`${baseUrl}/sessions/${sessionId}/skills`, {
+            headers: authOnly,
+          });
+          if (!res.ok) throw new Error(`skills.list failed: ${res.status}`);
+          return sessionSkillsResponseSchema.parse(await res.json());
+        },
+        load: (name: string) => mutateSkills("load", name),
+        unload: (name: string) => mutateSkills("unload", name),
+        async active() {
+          const listed = await this.list();
+          return listed.active.map((s) => s.name);
+        },
+      },
     };
+
+    async function mutateSkills(action: "load" | "unload", name: string) {
+      const res = await fetch(`${baseUrl}/sessions/${sessionId}/skills`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ action, name }),
+      });
+      if (!res.ok) throw new Error(`skills.${action} failed: ${res.status}`);
+      return sessionSkillsResponseSchema.parse(await res.json());
+    }
   }
 
   return {
@@ -158,6 +188,18 @@ export function createZoxClient(opts: { baseUrl: string; token: string }) {
           throw new Error(`mcp.remove failed: ${res.status}`);
         }
         return res.json() as Promise<{ ok: boolean; servers: unknown[] }>;
+      },
+    },
+    skills: {
+      async list(workspaceRoot: string) {
+        const res = await fetch(
+          `${baseUrl}/skills?workspaceRoot=${encodeURIComponent(workspaceRoot)}`,
+          { headers: authOnly },
+        );
+        if (!res.ok) {
+          throw new Error(`skills.list failed: ${res.status}`);
+        }
+        return workspaceSkillsResponseSchema.parse(await res.json());
       },
     },
     models: {

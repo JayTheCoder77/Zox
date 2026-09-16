@@ -13,6 +13,8 @@ export type StoredMessage = {
   toolCalls?: ToolCall[];
 };
 
+export type ActiveSkill = { name: string; body: string; path?: string };
+
 export type UsageRow = {
   id: string;
   sessionId: string;
@@ -42,7 +44,7 @@ export type StoredSession = {
   status: SessionStatus;
   messages: StoredMessage[];
   compactions?: CompactResult[];
-  activeSkills?: Array<{ name: string; body: string }>;
+  activeSkills?: ActiveSkill[];
   systemNotes?: string[];
 };
 

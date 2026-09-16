@@ -9,7 +9,10 @@ import {
 export type { ZoxMetrics };
 
 export type Observability = {
-  startTurn(): { end(): void; traceId: string };
+  startTurn(attrs?: { "zox.skills.active"?: string }): {
+    end(): void;
+    traceId: string;
+  };
   recordTool(name: string, denied: boolean): void;
   recordTokens(provider: string, input: number, output: number): void;
   recordModelLatency(seconds: number): void;
@@ -17,6 +20,7 @@ export type Observability = {
   recordCompaction(kind: "manual" | "auto"): void;
   recordSessionCost(usd: number): void;
   recordHookDuration(event: string, seconds: number): void;
+  recordSkillLoad(source: "slash" | "tool" | "auto"): void;
   withTool<T>(name: string, fn: () => Promise<T>): Promise<T>;
   renderPrometheus(): string;
 };
@@ -30,11 +34,11 @@ export function createObservability(opts: {
   const metrics = createMetrics();
 
   return {
-    startTurn() {
+    startTurn(attrs) {
       metrics.recordTurn();
       const started = performance.now();
       const span = tracingEnabled(opts.enabled)
-        ? startTurnSpan()
+        ? startTurnSpan(attrs)
         : disabledTraceId();
       return {
         traceId: span.traceId,
@@ -64,6 +68,9 @@ export function createObservability(opts: {
     },
     recordHookDuration(event: string, seconds: number) {
       metrics.observeHookDuration(event, seconds);
+    },
+    recordSkillLoad(source: "slash" | "tool" | "auto") {
+      metrics.recordSkillLoad(source);
     },
     async withTool<T>(name: string, fn: () => Promise<T>): Promise<T> {
       if (!tracingEnabled(opts.enabled)) {

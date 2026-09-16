@@ -9,6 +9,7 @@ export const hookEventSchema = z.enum([
   "PostCompact",
   "Stop",
   "SessionEnd",
+  "InstructionsLoaded",
 ]);
 
 export const hookInputSchema = z.object({
@@ -26,6 +27,14 @@ export const hookInputSchema = z.object({
   prompt: z.string().optional(),
   context: z.object({ estimatedTokens: z.number().optional() }).optional(),
   matcher: z.string().optional(),
+  skills: z
+    .array(
+      z.object({
+        name: z.string(),
+        path: z.string().optional(),
+      }),
+    )
+    .optional(),
 });
 
 export const hookOutputSchema = z.object({

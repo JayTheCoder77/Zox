@@ -6,7 +6,8 @@ export type HookEvent =
   | "PreCompact"
   | "PostCompact"
   | "Stop"
-  | "SessionEnd";
+  | "SessionEnd"
+  | "InstructionsLoaded";
 
 export type HookInput = {
   event: HookEvent;
@@ -15,6 +16,7 @@ export type HookInput = {
   prompt?: string;
   context?: { estimatedTokens?: number };
   matcher?: string;
+  skills?: Array<{ name: string; path?: string }>;
 };
 
 export type HookOutput = {
@@ -46,4 +48,5 @@ export const HOOK_EVENTS = [
   "PostCompact",
   "Stop",
   "SessionEnd",
+  "InstructionsLoaded",
 ] as const satisfies readonly HookEvent[];

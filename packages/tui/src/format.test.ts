@@ -24,6 +24,21 @@ describe("formatStatus", () => {
     expect(line).toContain("out 953");
     expect(line).not.toMatch(/49607\/953/);
   });
+
+  test("includes active skill names when present", () => {
+    const line = formatStatus({
+      model: "mock/echo",
+      agent: "build",
+      cwd: "/tmp/ws",
+      contextEstimated: 12_000,
+      contextWindow: 128_000,
+      contextWindowKnown: false,
+      inputTokens: 1,
+      outputTokens: 1,
+      activeSkills: ["helper", "brainstorming"],
+    });
+    expect(line).toContain("skills: helper, brainstorming");
+  });
 });
 
 describe("toolInvocationSummary", () => {

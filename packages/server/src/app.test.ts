@@ -407,6 +407,271 @@ describe("createApp", () => {
     );
   });
 
+  test("GET /skills lists workspace catalog", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-skills-http-"));
+    await Bun.write(
+      join(root, ".zox/skills/helper/SKILL.md"),
+      "---\nname: helper\ndescription: help\n---\nbody\n",
+    );
+    const server = app();
+    const res = await server.request(
+      `/skills?workspaceRoot=${encodeURIComponent(root)}`,
+      { headers: auth },
+    );
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { skills: Array<{ name: string }> };
+    expect(json.skills.some((s) => s.name === "helper")).toBe(true);
+  });
+
+  test("POST load then GET session skills; unload via /skill -u", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-skills-sess-"));
+    await Bun.write(
+      join(root, ".zox/skills/helper/SKILL.md"),
+      "---\nname: helper\ndescription: help\n---\nBODY\n",
+    );
+    const server = app();
+    const session = await createSession(server, root);
+    const loaded = await server.request(`/sessions/${session.id}/skills`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "load", name: "helper" }),
+    });
+    expect(loaded.status).toBe(200);
+    const listed = await server.request(`/sessions/${session.id}/skills`, {
+      headers: auth,
+    });
+    const json = (await listed.json()) as {
+      active: Array<{ name: string }>;
+    };
+    expect(json.active.map((s) => s.name)).toEqual(["helper"]);
+    const unloaded = await server.request(`/sessions/${session.id}/commands`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "skill", args: ["-u", "helper"] }),
+    });
+    expect(unloaded.status).toBe(200);
+    const after = await server.request(`/sessions/${session.id}/skills`, {
+      headers: auth,
+    });
+    const afterJson = (await after.json()) as { active: unknown[] };
+    expect(afterJson.active).toEqual([]);
+  });
+
+  test("skill tool during a turn publishes skills.changed", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-skills-tool-sse-"));
+    await Bun.write(
+      join(root, ".zox/skills/helper/SKILL.md"),
+      "---\nname: helper\ndescription: help\n---\nBODY\n",
+    );
+    let n = 0;
+    const tools = new ToolRegistry();
+    for (const tool of createBuiltinTools()) tools.register(tool);
+    const server = createApp({
+      token,
+      store: new MemorySessionStore(),
+      tools,
+      config: { sandbox: { mode: "host" } },
+      router: createProviderRouter({
+        adapters: [
+          createMockAdapter({
+            script: async function* () {
+              n += 1;
+              if (n === 1) {
+                yield {
+                  type: "tool-call",
+                  id: "tcs",
+                  name: "skill",
+                  arguments: { name: "helper" },
+                };
+                yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+                yield { type: "done" };
+                return;
+              }
+              yield { type: "text-delta", text: "loaded" };
+              yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+              yield { type: "done" };
+            },
+          }),
+        ],
+      }),
+    });
+    const session = await createSession(server, root);
+    const eventsRes = await server.request(`/sessions/${session.id}/events`, {
+      headers: auth,
+    });
+    const send = server.request(`/sessions/${session.id}/messages`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "use helper" }),
+    });
+    const body = await eventsRes.text();
+    await send;
+    expect(body).toContain("skills.changed");
+    expect(body).toContain("helper");
+  });
+
+  test("/skills with no args lists catalog loaded flags", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-skills-slash-list-"));
+    await Bun.write(
+      join(root, ".zox/skills/helper/SKILL.md"),
+      "---\nname: helper\ndescription: help\n---\nBODY\n",
+    );
+    const server = app();
+    const session = await createSession(server, root);
+    const listed = await server.request(`/sessions/${session.id}/commands`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "skills", args: [] }),
+    });
+    expect(listed.status).toBe(200);
+    const json = (await listed.json()) as {
+      skills: Array<{ name: string; loaded: boolean }>;
+    };
+    const helper = json.skills.find((s) => s.name === "helper");
+    expect(helper?.loaded).toBe(false);
+    await server.request(`/sessions/${session.id}/skills`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "load", name: "helper" }),
+    });
+    const listedLoaded = await server.request(
+      `/sessions/${session.id}/commands`,
+      {
+        method: "POST",
+        headers: { ...auth, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "skills" }),
+      },
+    );
+    const loadedJson = (await listedLoaded.json()) as {
+      skills: Array<{ name: string; loaded: boolean }>;
+    };
+    expect(loadedJson.skills.find((s) => s.name === "helper")?.loaded).toBe(
+      true,
+    );
+  });
+
+  test("/skills reload refreshes an already-loaded skill body from disk", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-skills-slash-reload-"));
+    const skillPath = join(root, ".zox/skills/helper/SKILL.md");
+    await Bun.write(
+      skillPath,
+      "---\nname: helper\ndescription: help\n---\nORIGINAL\n",
+    );
+    const server = app();
+    const session = await createSession(server, root);
+    const loaded = await server.request(`/sessions/${session.id}/skills`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "load", name: "helper" }),
+    });
+    expect(loaded.status).toBe(200);
+    await Bun.write(
+      skillPath,
+      "---\nname: helper\ndescription: help\n---\nUPDATED FROM DISK\n",
+    );
+    const reloaded = await server.request(`/sessions/${session.id}/commands`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "skills", args: ["reload"] }),
+    });
+    expect(reloaded.status).toBe(200);
+    const after = await server.request(`/sessions/${session.id}/skills`, {
+      headers: auth,
+    });
+    const afterJson = (await after.json()) as {
+      active: Array<{ name: string; body: string }>;
+    };
+    expect(afterJson.active[0]?.name).toBe("helper");
+    expect(afterJson.active[0]?.body).toContain("UPDATED FROM DISK");
+    expect(afterJson.active[0]?.body).not.toContain("ORIGINAL");
+  });
+
+  test("/skills unload empties that skill from GET session skills", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-skills-slash-unload-"));
+    await Bun.write(
+      join(root, ".zox/skills/helper/SKILL.md"),
+      "---\nname: helper\ndescription: help\n---\nBODY\n",
+    );
+    const server = app();
+    const session = await createSession(server, root);
+    const loaded = await server.request(`/sessions/${session.id}/skills`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "load", name: "helper" }),
+    });
+    expect(loaded.status).toBe(200);
+    const unloaded = await server.request(`/sessions/${session.id}/commands`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "skills", args: ["unload", "helper"] }),
+    });
+    expect(unloaded.status).toBe(200);
+    const after = await server.request(`/sessions/${session.id}/skills`, {
+      headers: auth,
+    });
+    const afterJson = (await after.json()) as { active: unknown[] };
+    expect(afterJson.active).toEqual([]);
+  });
+
+  test("/clear empties session active skills", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-skills-clear-"));
+    await Bun.write(
+      join(root, ".zox/skills/helper/SKILL.md"),
+      "---\nname: helper\ndescription: help\n---\nBODY\n",
+    );
+    const server = app();
+    const session = await createSession(server, root);
+    const loaded = await server.request(`/sessions/${session.id}/skills`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "load", name: "helper" }),
+    });
+    expect(loaded.status).toBe(200);
+    const cleared = await server.request(`/sessions/${session.id}/commands`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "clear" }),
+    });
+    expect(cleared.status).toBe(200);
+    const after = await server.request(`/sessions/${session.id}/skills`, {
+      headers: auth,
+    });
+    const afterJson = (await after.json()) as { active: unknown[] };
+    expect(afterJson.active).toEqual([]);
+  });
+
+  test("/skill uses skills.loadPaths", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-skills-lp-"));
+    const extra = await mkdtemp(join(tmpdir(), "zox-skills-lp-extra-"));
+    await Bun.write(
+      join(extra, "from-path/SKILL.md"),
+      "---\nname: from-path\ndescription: extra\n---\nbody\n",
+    );
+    const server = createApp({
+      token,
+      store: new MemorySessionStore(),
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+      config: {
+        sandbox: { mode: "host" },
+        skills: { loadPaths: [extra] },
+      },
+    });
+    const session = await createSession(server, root);
+    const injected = await server.request(`/sessions/${session.id}/commands`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "skill", args: ["from-path"] }),
+    });
+    expect(injected.status).toBe(200);
+    const memory = await server.request(`/sessions/${session.id}/memory`, {
+      headers: auth,
+    });
+    const json = (await memory.json()) as {
+      activeSkills: Array<{ name: string }>;
+    };
+    expect(json.activeSkills[0]?.name).toBe("from-path");
+  });
+
   test("DELETE /mcp/servers/:name unregisters namespaced tools", async () => {
     const tools = new ToolRegistry();
     for (const tool of createBuiltinTools()) tools.register(tool);

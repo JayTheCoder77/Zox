@@ -6,6 +6,7 @@ export type ZoxMetrics = {
 };
 
 export type CompactionKind = "manual" | "auto";
+export type SkillLoadSource = "slash" | "tool" | "auto";
 
 export function createMetrics(): {
   snapshot(): ZoxMetrics;
@@ -18,11 +19,14 @@ export function createMetrics(): {
   recordCompaction(kind: CompactionKind): void;
   setSessionCost(usd: number): void;
   observeHookDuration(event: string, seconds: number): void;
+  recordSkillLoad(source: SkillLoadSource): void;
   renderPrometheus(): string;
 } {
   const toolCalls = new Map<string, number>();
   const tokens = new Map<string, number>();
   const hookDurations = new Map<string, number>();
+  const skillLoads = new Map<SkillLoadSource, number>();
+  const skillLoadSources: SkillLoadSource[] = ["slash", "tool", "auto"];
   const compactions: Record<CompactionKind, number> = {
     manual: 0,
     auto: 0,
@@ -72,6 +76,9 @@ export function createMetrics(): {
     },
     observeHookDuration(event: string, seconds: number) {
       bump(hookDurations, event, seconds);
+    },
+    recordSkillLoad(source: SkillLoadSource) {
+      bump(skillLoads, source, 1);
     },
     renderPrometheus(): string {
       const lines: string[] = [];
@@ -153,6 +160,13 @@ export function createMetrics(): {
             `zox_hook_duration_seconds{event="${escapeLabel(event)}"} ${value}`,
           );
         }
+      }
+
+      help("zox_skills_loads_total", "counter", "Skill loads by source");
+      for (const source of skillLoadSources) {
+        lines.push(
+          `zox_skills_loads_total{source="${source}"} ${skillLoads.get(source) ?? 0}`,
+        );
       }
 
       return `${lines.join("\n")}\n`;

@@ -7,6 +7,12 @@ import type {
   StreamEvent,
   ToolCall,
 } from "@zox/providers";
+import {
+  activateSkill,
+  buildSkillsCatalog,
+  type CatalogOptions,
+  discoverSkills,
+} from "@zox/skills";
 import type { ToolRegistry, ToolResult } from "@zox/tools";
 import { getAgentProfile, toolMatchesProfile } from "./agents.ts";
 import { createId } from "./ids.ts";
@@ -45,11 +51,15 @@ export type ContextEngine = {
 };
 
 export type TurnObservability = {
-  startTurn(): { end(): void; traceId: string };
+  startTurn(attrs?: { "zox.skills.active"?: string }): {
+    end(): void;
+    traceId: string;
+  };
   recordTool(name: string, denied: boolean): void;
   recordTokens(provider: string, input: number, output: number): void;
   recordModelLatency?(seconds: number): void;
   recordContextEstimated?(tokens: number): void;
+  recordSkillLoad?(source: "slash" | "tool" | "auto"): void;
   withTool?<T>(name: string, fn: () => Promise<T>): Promise<T>;
 };
 
@@ -62,6 +72,8 @@ export async function* runTurn(opts: {
   hooks?: HookRunner;
   context?: ContextEngine;
   observability?: TurnObservability;
+  skillLoadPaths?: string[];
+  skillsConfig?: CatalogOptions;
   ids?: {
     messageId(): string;
     turnId(): string;
@@ -69,7 +81,11 @@ export async function* runTurn(opts: {
     requestId(): string;
   };
 }): AsyncIterable<ZoxEvent> {
-  const turnObs = opts.observability?.startTurn();
+  const turnObs = opts.observability?.startTurn({
+    "zox.skills.active": (opts.session.activeSkills ?? [])
+      .map((s) => s.name)
+      .join(","),
+  });
   try {
     if (turnObs) {
       opts.session.lastTraceId = turnObs.traceId;
@@ -89,6 +105,8 @@ async function* runTurnBody(opts: {
   hooks?: HookRunner;
   context?: ContextEngine;
   observability?: TurnObservability;
+  skillLoadPaths?: string[];
+  skillsConfig?: CatalogOptions;
   ids?: {
     messageId(): string;
     turnId(): string;
@@ -167,6 +185,8 @@ async function* runTurnBody(opts: {
         messageId,
         tools: toolSchemas.length > 0 ? toolSchemas : undefined,
         observability: opts.observability,
+        skillLoadPaths: opts.skillLoadPaths,
+        skillsConfig: opts.skillsConfig,
       });
 
       if (round.kind === "error") {
@@ -363,6 +383,8 @@ async function* consumeModelRound(opts: {
   messageId: string;
   tools?: StreamChatParams["tools"];
   observability?: TurnObservability;
+  skillLoadPaths?: string[];
+  skillsConfig?: CatalogOptions;
 }): AsyncGenerator<ZoxEvent, ModelRound> {
   let text = "";
   let inputTokens = 0;
@@ -378,6 +400,13 @@ async function* consumeModelRound(opts: {
       assembleProviderMessages({
         messages: opts.session.messages,
         compactions: opts.session.compactions,
+        skillsCatalog: buildSkillsCatalog(
+          discoverSkills({
+            workspaceRoot: opts.session.workspaceRoot,
+            loadPaths: opts.skillLoadPaths,
+          }),
+          opts.skillsConfig,
+        ),
         skillBodies: opts.session.activeSkills?.map((skill) => skill.body),
         priorStateMarkdown: opts.session.priorStateMarkdown,
         systemNotes: opts.session.systemNotes,
@@ -437,6 +466,7 @@ async function* executeToolCall(input: {
     permission?: PermissionResponder;
     hooks?: HookRunner;
     observability?: TurnObservability;
+    skillLoadPaths?: string[];
     ids?: {
       messageId(): string;
       turnId(): string;
@@ -552,6 +582,21 @@ async function* executeToolCall(input: {
               id: opts.session.id,
               workspaceRoot: opts.session.workspaceRoot,
               agent: opts.session.agent,
+            },
+            loadPaths: opts.skillLoadPaths,
+            activateSkill: (skill) => {
+              opts.session.activeSkills = activateSkill(
+                opts.session.activeSkills ?? [],
+                skill,
+              );
+              void opts.hooks?.run("InstructionsLoaded", {
+                session: {
+                  id: opts.session.id,
+                  workspaceRoot: opts.session.workspaceRoot,
+                },
+                skills: [{ name: skill.name, path: skill.path }],
+              });
+              opts.observability?.recordSkillLoad?.("tool");
             },
           });
         result = opts.observability?.withTool

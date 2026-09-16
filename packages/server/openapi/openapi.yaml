@@ -202,6 +202,46 @@ paths:
       responses:
         "200":
           description: OK
+  /skills:
+    get:
+      summary: Workspace-scoped skill catalog
+      parameters:
+        - name: workspaceRoot
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Catalog
+  /sessions/{id}/skills:
+    get:
+      summary: Session catalog + active skills
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: OK
+    post:
+      summary: Load or unload a skill on the session
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, name]
+              properties:
+                action:
+                  type: string
+                  enum: [load, unload]
+                name:
+                  type: string
+      responses:
+        "200":
+          description: Updated session skills
 components:
   securitySchemes:
     bearerAuth:
