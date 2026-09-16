@@ -2,7 +2,7 @@ import type { ZoxEvent } from "@zox/contracts";
 import type { createZoxClient } from "@zox/sdk";
 import { Box, Text, useApp, useInput } from "ink";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { foldTool } from "./format.ts";
+import { foldTool, formatToolExpanded } from "./format.ts";
 import { PermissionDialog } from "./permission-dialog.tsx";
 import { cycleSlashCompletion, parseSlash } from "./slash.ts";
 import { executeSlash } from "./slash-actions.ts";
@@ -17,7 +17,14 @@ type RunHandle = ReturnType<SessionHandle["send"]>;
 export type TranscriptEntry =
   | { kind: "user"; id: string; text: string }
   | { kind: "assistant"; id: string; text: string }
-  | { kind: "tool"; id: string; toolCallId: string; name: string; ok?: boolean }
+  | {
+      kind: "tool";
+      id: string;
+      toolCallId: string;
+      name: string;
+      arguments?: Record<string, unknown>;
+      ok?: boolean;
+    }
   | { kind: "system"; id: string; text: string };
 
 export type ZoxAppProps = {
@@ -46,12 +53,16 @@ export function ZoxApp(props: ZoxAppProps) {
   const [permission, setPermission] = useState<{
     requestId: string;
     toolName: string;
+    toolArguments?: Record<string, unknown>;
     run: RunHandle;
   } | null>(null);
   const [status, setStatus] = useState({
     model: props.sessionDefaults.model ?? "default",
     agent: props.sessionDefaults.agent ?? "build",
     cwd: props.workspaceRoot,
+    contextEstimated: 0,
+    contextWindow: 128_000,
+    contextWindowKnown: false,
     inputTokens: 0,
     outputTokens: 0,
   });
@@ -95,10 +106,19 @@ export function ZoxApp(props: ZoxAppProps) {
           id: nextId("tool", idCounter.current),
           toolCallId: event.toolCallId,
           name: event.name,
+          arguments: event.arguments,
         });
       }
       if (event.type === "tool.completed") {
         patchTool(event.toolCallId, { ok: event.ok, name: event.name });
+      }
+      if (event.type === "context.estimated") {
+        setStatus((prev) => ({
+          ...prev,
+          contextEstimated: event.estimatedTokens,
+          contextWindow: event.windowTokens,
+          contextWindowKnown: event.windowKnown,
+        }));
       }
       if (event.type === "usage.turn" || event.type === "usage.session") {
         setStatus((prev) => ({
@@ -112,6 +132,7 @@ export function ZoxApp(props: ZoxAppProps) {
         setPermission({
           requestId: event.requestId,
           toolName: event.name,
+          toolArguments: event.arguments,
           run,
         });
       }
@@ -252,15 +273,19 @@ export function ZoxApp(props: ZoxAppProps) {
           return <Text key={entry.id}>{entry.text}</Text>;
         }
         if (entry.kind === "tool") {
-          const folded =
-            entry.ok === undefined
-              ? entry.name
-              : foldTool(entry.name, entry.ok);
+          const folded = foldTool(entry.name, entry.ok, entry.arguments);
           const expanded = expandedTools.has(entry.toolCallId);
           return (
-            <Text key={entry.id} dimColor={!expanded}>
-              {expanded ? `${folded} (${entry.toolCallId})` : folded}
-            </Text>
+            <Box key={entry.id} flexDirection="column">
+              <Text color="yellow" dimColor={entry.ok === false}>
+                {folded}
+              </Text>
+              {expanded && entry.arguments ? (
+                <Text dimColor wrap="wrap">
+                  {formatToolExpanded(entry.name, entry.arguments)}
+                </Text>
+              ) : null}
+            </Box>
           );
         }
         return (
@@ -280,6 +305,7 @@ export function ZoxApp(props: ZoxAppProps) {
       {permission ? (
         <PermissionDialog
           toolName={permission.toolName}
+          toolArguments={permission.toolArguments}
           onRespond={(approved) => {
             const pending = permission;
             setPermission(null);
