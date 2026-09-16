@@ -35,6 +35,7 @@ export const toolStartedEventSchema = z.object({
   sessionId: z.string(),
   toolCallId: z.string(),
   name: z.string(),
+  arguments: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const toolCompletedEventSchema = z.object({
@@ -51,6 +52,7 @@ export const toolPermissionRequiredEventSchema = z.object({
   requestId: z.string(),
   toolCallId: z.string(),
   name: z.string(),
+  arguments: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const usageTurnEventSchema = z.object({
@@ -72,6 +74,14 @@ export const usageSessionEventSchema = z.object({
   sessionId: z.string(),
   inputTokens: z.number(),
   outputTokens: z.number(),
+});
+
+export const contextEstimatedEventSchema = z.object({
+  type: z.literal("context.estimated"),
+  sessionId: z.string(),
+  estimatedTokens: z.number(),
+  windowTokens: z.number(),
+  windowKnown: z.boolean(),
 });
 
 export const contextOverflowEventSchema = z.object({
@@ -103,6 +113,7 @@ export const zoxEventSchema = z.discriminatedUnion("type", [
   toolPermissionRequiredEventSchema,
   usageTurnEventSchema,
   usageSessionEventSchema,
+  contextEstimatedEventSchema,
   contextOverflowEventSchema,
   contextCompactedEventSchema,
   errorEventSchema,

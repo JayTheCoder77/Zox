@@ -9,6 +9,9 @@ describe("StatusBar ink render", () => {
         model="mock/echo"
         agent="build"
         cwd="/tmp"
+        contextEstimated={100}
+        contextWindow={128_000}
+        contextWindowKnown={false}
         inputTokens={10}
         outputTokens={5}
       />,

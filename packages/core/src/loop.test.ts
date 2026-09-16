@@ -43,6 +43,7 @@ describe("runTurn", () => {
     }
     expect(events.map((event) => event.type)).toEqual([
       "session.status",
+      "context.estimated",
       "error",
       "message.delta",
       "usage.turn",
@@ -51,10 +52,15 @@ describe("runTurn", () => {
       "session.status",
     ]);
     expect(events[1]).toMatchObject({
+      type: "context.estimated",
+      windowKnown: false,
+      windowTokens: 128_000,
+    });
+    expect(events[2]).toMatchObject({
       type: "error",
       code: "context.window_unknown",
     });
-    expect(events[2]).toMatchObject({
+    expect(events[3]).toMatchObject({
       type: "message.delta",
       delta: "ping",
       messageId: "msg_asst",

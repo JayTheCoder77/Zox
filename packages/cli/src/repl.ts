@@ -5,6 +5,7 @@ import type { SlashContext } from "./commands.ts";
 import { executeSlash } from "./commands.ts";
 import { parseSlash } from "./parse.ts";
 import { promptPermission } from "./permission.ts";
+import { toolInvocationSummary } from "@zox/tui/format";
 
 type SessionHandle = Awaited<
   ReturnType<ReturnType<typeof createZoxClient>["sessions"]["create"]>
@@ -63,8 +64,22 @@ async function handleEvent(
   if (event.type === "message.delta" && event.delta) {
     process.stdout.write(event.delta);
   }
+  if (event.type === "tool.started") {
+    const summary = toolInvocationSummary(
+      event.name,
+      event.arguments ?? {},
+    );
+    process.stdout.write(`\n\x1b[33m${summary}\x1b[0m`);
+  }
+  if (event.type === "tool.completed") {
+    process.stdout.write(` — ${event.ok ? "ok" : "denied"}\n`);
+  }
   if (event.type === "tool.permission_required") {
-    const approved = await promptPermission();
+    const summary = toolInvocationSummary(
+      event.name,
+      event.arguments ?? {},
+    );
+    const approved = await promptPermission(summary);
     await run.respondPermission(event.requestId, { approved });
   }
 }

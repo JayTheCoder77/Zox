@@ -101,7 +101,18 @@ export async function listen(opts?: {
   const server = Bun.serve({
     hostname,
     port,
-    fetch: app.fetch,
+    fetch(req, bunServer) {
+      const url = new URL(req.url);
+      if (
+        req.method === "GET" &&
+        /^\/sessions\/[^/]+\/events$/.test(url.pathname)
+      ) {
+        // SSE may sit idle until the model emits; Bun's default 10s idleTimeout
+        // resets the socket and breaks the CLI/TUI client mid-turn.
+        bunServer.timeout(req, 0);
+      }
+      return app.fetch(req, bunServer);
+    },
   });
   return {
     port: server.port ?? port,

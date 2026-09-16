@@ -310,6 +310,13 @@ async function* emitContextWarnings(
     : estimateSession(session.messages);
   observability?.recordContextEstimated?.(estimated);
   const knownWindow = context?.windowTokens;
+  yield {
+    type: "context.estimated",
+    sessionId: session.id,
+    estimatedTokens: estimated,
+    windowTokens: knownWindow ?? UNKNOWN_WINDOW_TOKENS,
+    windowKnown: knownWindow !== undefined,
+  };
   if (knownWindow === undefined) {
     if (!session.windowWarned) {
       session.windowWarned = true;
@@ -447,6 +454,7 @@ async function* executeToolCall(input: {
     sessionId: opts.session.id,
     toolCallId,
     name: call.name,
+    arguments: call.arguments,
   };
 
   let result: ToolResult;
@@ -473,6 +481,7 @@ async function* executeToolCall(input: {
         requestId,
         toolCallId,
         name: call.name,
+        arguments: call.arguments,
       };
       const approved = opts.permission
         ? await opts.permission.wait(requestId)
