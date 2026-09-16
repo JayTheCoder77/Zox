@@ -548,4 +548,209 @@ describe("runTurn", () => {
     expect(sess.activeSkills?.some((s) => s.name === "helper")).toBe(true);
     expect(secondRound).toContain("ALWAYS conventional commits");
   });
+
+  test("calls onOverflow once on hard overflow then still runs streamChat", async () => {
+    let overflowCalls = 0;
+    let streamChatCalls = 0;
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* () {
+            streamChatCalls += 1;
+            yield { type: "text-delta", text: "ok" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const sess = session();
+    sess.messages = [
+      { id: "m1", role: "user", content: "old user" },
+      { id: "m2", role: "assistant", content: "old assistant" },
+    ];
+    const events = [];
+    for await (const event of runTurn({
+      session: sess,
+      userContent: "keep going",
+      router,
+      tools: new ToolRegistry(),
+      context: {
+        windowTokens: 100,
+        estimateTokens: () => 90,
+      },
+      onOverflow: async (info) => {
+        overflowCalls += 1;
+        expect(info.kind).toBe("auto");
+        expect(info.estimatedTokens).toBe(90);
+        sess.compactions = [
+          { fromMessageId: "m1", toMessageId: "m2", summary: "SUM" },
+        ];
+      },
+    })) {
+      events.push(event);
+    }
+    expect(overflowCalls).toBe(1);
+    expect(streamChatCalls).toBe(1);
+    const overflowIndex = events.findIndex(
+      (event) => event.type === "context.overflow",
+    );
+    expect(overflowIndex).toBeGreaterThanOrEqual(0);
+    expect(events[overflowIndex + 1]).toMatchObject({
+      type: "session.status",
+      sessionId: "sess_1",
+      status: "running",
+    });
+    expect(
+      sess.messages.some((message) => message.content === "keep going"),
+    ).toBe(true);
+  });
+
+  test("does not auto-compact a follow-up turn when assembled history is under the window", async () => {
+    let overflowCalls = 0;
+    let streamChatCalls = 0;
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* () {
+            streamChatCalls += 1;
+            yield { type: "text-delta", text: "ok" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const oldUser = "old user ".repeat(40);
+    const oldAssistant = "old assistant ".repeat(40);
+    const sess = session();
+    sess.messages = [
+      { id: "m1", role: "user", content: oldUser },
+      { id: "m2", role: "assistant", content: oldAssistant },
+    ];
+    sess.compactions = [
+      { fromMessageId: "m1", toMessageId: "m2", summary: "SUM" },
+    ];
+    const events = [];
+    for await (const event of runTurn({
+      session: sess,
+      userContent: "keep going",
+      router,
+      tools: new ToolRegistry(),
+      context: {
+        windowTokens: 100,
+        estimateTokens: (text) => text.length,
+      },
+      onOverflow: async () => {
+        overflowCalls += 1;
+      },
+    })) {
+      events.push(event);
+    }
+    const rawSize = oldUser.length + oldAssistant.length + "keep going".length;
+    expect(rawSize).toBeGreaterThan(85);
+    expect(overflowCalls).toBe(0);
+    expect(streamChatCalls).toBe(1);
+    expect(events.some((event) => event.type === "context.overflow")).toBe(
+      false,
+    );
+  });
+
+  test("yields context.compact_failed when onOverflow throws and skips the model", async () => {
+    let streamChatCalls = 0;
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* () {
+            streamChatCalls += 1;
+            yield { type: "text-delta", text: "ok" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const sess = session();
+    const events = [];
+    for await (const event of runTurn({
+      session: sess,
+      userContent: "too much",
+      router,
+      tools: new ToolRegistry(),
+      context: {
+        windowTokens: 100,
+        estimateTokens: () => 90,
+      },
+      onOverflow: async () => {
+        throw new Error("summarizer rejected");
+      },
+    })) {
+      events.push(event);
+    }
+    expect(streamChatCalls).toBe(0);
+    expect(
+      events.some(
+        (event) =>
+          event.type === "error" && event.code === "context.compact_failed",
+      ),
+    ).toBe(true);
+    expect(sess.status === "idle" || sess.status === "error").toBe(true);
+  });
+
+  test("passes webfetch allowlist and maxBytes into tool execute context", async () => {
+    let seen:
+      | { allowedHosts?: string[]; webfetchMaxBytes?: number }
+      | undefined;
+    let n = 0;
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* () {
+            n += 1;
+            if (n === 1) {
+              yield {
+                type: "tool-call",
+                id: "tc_wf",
+                name: "read",
+                arguments: { path: "a.ts" },
+              };
+              yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+              yield { type: "done" };
+              return;
+            }
+            yield { type: "text-delta", text: "ok" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const tools = new ToolRegistry();
+    tools.register({
+      name: "read",
+      description: "read",
+      parameters: { type: "object", properties: {} },
+      async execute(_args, ctx) {
+        seen = {
+          allowedHosts: ctx.allowedHosts,
+          webfetchMaxBytes: ctx.webfetchMaxBytes,
+        };
+        return { ok: true, content: "ok", truncated: false };
+      },
+    });
+    for await (const _e of runTurn({
+      session: session(),
+      userContent: "fetch",
+      router,
+      tools,
+      webfetchAllowedHosts: ["example.com"],
+      webfetchMaxBytes: 4096,
+    })) {
+      /* drain */
+    }
+    expect(seen).toEqual({
+      allowedHosts: ["example.com"],
+      webfetchMaxBytes: 4096,
+    });
+  });
 });

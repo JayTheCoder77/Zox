@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { access, mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { autoSummarize } from "./summarize.ts";
+import { autoSummarize, buildAutoSummaryPrompt } from "./summarize.ts";
 
 async function pathExists(path: string): Promise<boolean> {
   try {
@@ -12,6 +12,28 @@ async function pathExists(path: string): Promise<boolean> {
     return false;
   }
 }
+
+describe("buildAutoSummaryPrompt", () => {
+  test("includes plan JSON, prior-state heading, compaction summaries, and truncated recent lines", () => {
+    const longTurn = `KEEP-HEAD${"x".repeat(32_000)}TAIL-SHOULD-DROP`;
+    const prompt = buildAutoSummaryPrompt({
+      planJson: [
+        { id: "p1", content: "unique-plan-goal", status: "in_progress" },
+      ],
+      priorStateMarkdown: "## Prior state (auto)\n- Goal: unique-prior-goal",
+      compactionSummaries: ["COMPACT-SUMMARY-UNIQUE"],
+      recentTexts: ["short recent line", longTurn],
+    });
+
+    expect(prompt).toContain("unique-plan-goal");
+    expect(prompt).toContain("## Prior state");
+    expect(prompt).toContain("unique-prior-goal");
+    expect(prompt).toContain("COMPACT-SUMMARY-UNIQUE");
+    expect(prompt).toContain("short recent line");
+    expect(prompt).toContain("KEEP-HEAD");
+    expect(prompt).not.toContain("TAIL-SHOULD-DROP");
+  });
+});
 
 describe("autoSummarize", () => {
   test("returns null and writes nothing when disabled", async () => {
@@ -111,5 +133,39 @@ describe("autoSummarize", () => {
     );
     const index = JSON.parse(indexRaw) as Array<{ sessionId: string }>;
     expect(index.map((e) => e.sessionId)).toEqual(["first", "second"]);
+  });
+
+  test("merges bullets into rolling-summary.md and dedupes trimmed lines", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "zox-mem-roll-"));
+    const rollingPath = join(workspaceRoot, ".zox/memory/rolling-summary.md");
+
+    await autoSummarize({
+      enabled: true,
+      workspaceRoot,
+      sessionId: "roll-1",
+      planJson: [],
+      recentTexts: [],
+      rollingSummary: true,
+      summarize: async () => "- First fact\n- Second fact\n",
+    });
+
+    const first = await readFile(rollingPath, "utf8");
+    expect(first).toContain("First fact");
+    expect(first).toContain("Second fact");
+
+    await autoSummarize({
+      enabled: true,
+      workspaceRoot,
+      sessionId: "roll-2",
+      planJson: [],
+      recentTexts: [],
+      rollingSummary: true,
+      summarize: async () => "-   First fact  \n- Third fact\n",
+    });
+
+    const second = await readFile(rollingPath, "utf8");
+    expect(second.match(/First fact/g)?.length).toBe(1);
+    expect(second).toContain("Second fact");
+    expect(second).toContain("Third fact");
   });
 });

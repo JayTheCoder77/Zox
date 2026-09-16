@@ -27,11 +27,13 @@ export async function runEmbed(flags: CliFlags): Promise<void> {
 
   try {
     const client = createZoxClient({ baseUrl, token });
-    const session = await client.sessions.create({
-      workspaceRoot,
-      agent: flags.agent,
-      model: flags.model,
-    });
+    const session = flags.session
+      ? await client.sessions.get(flags.session)
+      : await client.sessions.create({
+          workspaceRoot,
+          agent: flags.agent,
+          model: flags.model,
+        });
 
     const sessionDefaults = { agent: flags.agent, model: flags.model };
     const useTui = process.stdout.isTTY && process.stdin.isTTY && !flags.noTui;

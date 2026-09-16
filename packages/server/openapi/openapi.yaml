@@ -8,6 +8,28 @@ security:
   - bearerAuth: []
 paths:
   /sessions:
+    get:
+      summary: List sessions for a workspace
+      parameters:
+        - name: workspaceRoot
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionListResponse"
+        "400":
+          description: workspaceRoot missing
     post:
       summary: Create session
       requestBody:
@@ -136,12 +158,48 @@ paths:
           description: Closed
   /sessions/{id}/memory:
     get:
-      summary: Plan, prior-state, and active skills
+      summary: Plan, prior-state, active skills, and injected durable ids
       parameters:
         - $ref: "#/components/parameters/SessionId"
       responses:
         "200":
           description: Memory snapshot
+    post:
+      summary: Append a durable memory entry
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                pinned:
+                  type: boolean
+      responses:
+        "201":
+          description: Created
+  /memory/search:
+    get:
+      summary: FTS search durable memories
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: workspaceRoot
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ranked memories
   /models:
     get:
       summary: List adapters and sample model ids
@@ -202,6 +260,27 @@ paths:
       responses:
         "200":
           description: OK
+  /sessions/{id}/hooks/test:
+    post:
+      summary: Dry-run a hook event with a fixture payload
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event, payload]
+              properties:
+                event:
+                  type: string
+                payload: {}
+      responses:
+        "200":
+          description: HookOutput
+        "404":
+          description: Unknown session
   /skills:
     get:
       summary: Workspace-scoped skill catalog
@@ -289,3 +368,28 @@ components:
         status:
           type: string
           enum: [idle, running, compacting, awaiting_permission, error]
+    SessionSummary:
+      type: object
+      required: [id, workspaceRoot, agent, model, status, createdAt]
+      properties:
+        id:
+          type: string
+        workspaceRoot:
+          type: string
+        agent:
+          type: string
+        model:
+          type: string
+        status:
+          type: string
+          enum: [idle, running, compacting, awaiting_permission, error]
+        createdAt:
+          type: number
+    SessionListResponse:
+      type: object
+      required: [sessions]
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionSummary"

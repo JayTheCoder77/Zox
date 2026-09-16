@@ -60,4 +60,32 @@ describe("listen", () => {
     expect(created.status).toBe(201);
     expect(await Bun.file(marker).exists()).toBe(true);
   });
+
+  test("forwards context from project config to GET /config", async () => {
+    const project = await mkdtemp(join(tmpdir(), "zox-listen-context-"));
+    const hookDir = join(project, ".zox");
+    await mkdir(hookDir, { recursive: true });
+    await writeFile(
+      join(hookDir, "config.json"),
+      JSON.stringify({ context: { overflowThreshold: 0.42 } }),
+    );
+
+    prevCwd = process.cwd();
+    process.chdir(project);
+    const server = await listen({
+      port: 0,
+      token: "context-test-token",
+      sandboxMode: "host",
+    });
+    servers.push(server);
+
+    const cfg = await fetch(`http://127.0.0.1:${server.port}/config`, {
+      headers: { Authorization: "Bearer context-test-token" },
+    });
+    expect(cfg.status).toBe(200);
+    const json = (await cfg.json()) as {
+      context?: { overflowThreshold?: number };
+    };
+    expect(json.context?.overflowThreshold).toBe(0.42);
+  });
 });

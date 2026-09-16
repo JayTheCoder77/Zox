@@ -16,6 +16,9 @@ const BUILD_TOOLS = [
   "write",
   "edit",
   "bash",
+  "webfetch",
+  "memory_search",
+  "memory_write",
   "mcp_*",
 ];
 
@@ -28,7 +31,15 @@ export function toolMatchesProfile(
   );
 }
 
-const PLAN_TOOLS = ["read", "grep", "glob", "ls", "skill"];
+const PLAN_TOOLS = [
+  "read",
+  "grep",
+  "glob",
+  "ls",
+  "skill",
+  "memory_search",
+  "memory_write",
+];
 
 function ruleset(
   allowedTools: readonly string[],
@@ -45,7 +56,16 @@ const PROFILES: Record<"build" | "plan", AgentProfile> = {
     name: "build",
     tools: BUILD_TOOLS,
     ruleset: ruleset(
-      ["read", "grep", "glob", "ls", "skill", "todowrite", "mcp_*"],
+      [
+        "read",
+        "grep",
+        "glob",
+        "ls",
+        "skill",
+        "todowrite",
+        "memory_search",
+        "mcp_*",
+      ],
       [],
     ),
   },
@@ -56,9 +76,11 @@ const PROFILES: Record<"build" | "plan", AgentProfile> = {
   },
 };
 
-for (const tool of ["write", "edit", "bash"]) {
+for (const tool of ["write", "edit", "bash", "webfetch", "memory_write"]) {
   PROFILES.build.ruleset[tool] = { default: "ask" };
 }
+PROFILES.plan.ruleset.memory_search = { default: "allow" };
+PROFILES.plan.ruleset.memory_write = { default: "ask" };
 
 export function getAgentProfile(name: string): AgentProfile {
   if (name !== "build" && name !== "plan") {

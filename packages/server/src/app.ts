@@ -1,8 +1,10 @@
+import { existsSync } from "node:fs";
 import { estimateSession } from "@zox/context";
 import {
   createSessionRequestSchema,
   mutateSessionSkillsRequestSchema,
   sendMessageRequestSchema,
+  writeMemoryRequestSchema,
   type ZoxEvent,
 } from "@zox/contracts";
 import {
@@ -17,7 +19,12 @@ import {
 } from "@zox/core";
 import type { HooksFile } from "@zox/hooks";
 import { McpPool } from "@zox/mcp";
-import { autoSummarize } from "@zox/memory";
+import {
+  autoSummarize,
+  loadStartupMemories,
+  searchDurableMemories,
+  writeDurableMemory,
+} from "@zox/memory";
 import type { Observability } from "@zox/observability";
 import type { createProviderRouter } from "@zox/providers";
 import {
@@ -25,6 +32,7 @@ import {
   ensureWorktree,
   removeWorktree,
 } from "@zox/sandbox";
+import { SqliteSessionStore } from "@zox/session";
 import {
   activateSkill,
   deactivateSkill,
@@ -46,7 +54,15 @@ export type AppConfig = {
   agent?: string;
   sandbox?: { mode: "host" | "worktree" | "container" | "remote" };
   providers?: Record<string, Record<string, unknown>>;
-  memory?: { autoSummarize?: boolean };
+  context?: { overflowThreshold?: number; windowTokens?: number };
+  budget?: { preCompactTokenThreshold?: number };
+  memory?: {
+    autoSummarize?: boolean;
+    summarizeModel?: string;
+    startupInjectCount?: number;
+    rollingSummary?: boolean;
+    autoInject?: string[];
+  };
   observability?: {
     metrics?: boolean | { public?: boolean };
     recordContent?: boolean;
@@ -57,6 +73,9 @@ export type AppConfig = {
     catalog?: boolean;
     catalogMaxSkills?: number;
     catalogMaxDescriptionChars?: number;
+  };
+  tools?: {
+    webfetch?: { allowedHosts?: string[]; maxBytes?: number };
   };
   hooks?: HooksFile;
   worktreeCleanup?: "keep" | "remove";
@@ -85,6 +104,7 @@ const COMMAND_NAMES = [
   "cancel",
   "sandbox",
   "trace",
+  "remember",
 ] as const;
 
 export function createApp(opts: {
@@ -115,17 +135,24 @@ export function createApp(opts: {
     hooks: opts.config?.hooks,
     memory: {
       autoSummarize: opts.config?.memory?.autoSummarize ?? true,
+      summarizeModel: opts.config?.memory?.summarizeModel,
+      startupInjectCount: opts.config?.memory?.startupInjectCount,
+      rollingSummary: opts.config?.memory?.rollingSummary,
+      autoInject: opts.config?.memory?.autoInject,
     },
     observability: opts.config?.observability,
   };
   const summarize: SessionSummarizer =
-    opts.summarize ?? (async () => "compacted");
+    opts.summarize ??
+    createRouterSummarizer(opts.router, config.memory?.summarizeModel);
   const adapterIds = opts.adapterIds ?? ["mock"];
   const permissionWaiters = new Map<string, { resolve(v: boolean): void }>();
   const permissionDecisions = new Map<string, boolean>();
   const sessionPermissionIds = new Map<string, Set<string>>();
   const turnAborts = new Map<string, AbortController>();
   const processUsage = { inputTokens: 0, outputTokens: 0 };
+  const resumedSessions = new Set<string>();
+  const injectedDurableIds = new Map<string, string[]>();
 
   const permission: PermissionResponder = {
     wait(requestId) {
@@ -139,6 +166,53 @@ export function createApp(opts: {
       });
     },
   };
+
+  async function attachResumedSession(
+    session: StoredSession,
+  ): Promise<{ error?: string }> {
+    if (resumedSessions.has(session.id)) return {};
+    resumedSessions.add(session.id);
+    if (!existsSync(session.sandboxRoot)) {
+      try {
+        const sandbox = await ensureWorktree({
+          workspaceRoot: session.workspaceRoot,
+          sessionId: session.id,
+          config: {
+            ...DEFAULT_SANDBOX_CONFIG,
+            mode: config.sandbox?.mode ?? "host",
+          },
+        });
+        session.sandboxRoot = sandbox.root;
+        session.sandboxMode = sandbox.mode;
+      } catch (error) {
+        resumedSessions.delete(session.id);
+        return {
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
+    if (opts.hooks) {
+      try {
+        const start = await opts.hooks.run("SessionStart", {
+          matcher: "resume",
+          session: { id: session.id, workspaceRoot: session.workspaceRoot },
+        });
+        if (start.message?.trim()) {
+          session.systemNotes = [
+            ...(session.systemNotes ?? []),
+            start.message.trim(),
+          ];
+        }
+      } catch (error) {
+        resumedSessions.delete(session.id);
+        return {
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
+    opts.store.save(session);
+    return {};
+  }
 
   app.use("*", bearerAuth(opts.token));
 
@@ -207,18 +281,65 @@ export function createApp(opts: {
         opts.store.save(session);
       }
     }
+    const durableDb = sqliteDatabase(opts.store);
+    if (durableDb) {
+      const loaded = await loadStartupMemories({
+        db: durableDb,
+        workspaceRoot: session.workspaceRoot,
+        startupInjectCount: config.memory?.startupInjectCount,
+        autoInject: config.memory?.autoInject,
+      });
+      injectedDurableIds.set(session.id, loaded.injectedDurableIds);
+      if (loaded.notes.length > 0) {
+        session.systemNotes = [...(session.systemNotes ?? []), ...loaded.notes];
+        opts.store.save(session);
+      }
+    }
+    resumedSessions.add(session.id);
     return c.json(sessionPayload(session), 201);
   });
 
-  app.get("/sessions/:id", (c) => {
+  app.get("/sessions", (c) => {
+    const workspaceRoot = c.req.query("workspaceRoot");
+    if (!workspaceRoot) {
+      return c.json({ error: "workspaceRoot required" }, 400);
+    }
+    const rawLimit = c.req.query("limit");
+    const parsedLimit = rawLimit === undefined ? 50 : Number(rawLimit);
+    const limit = Number.isFinite(parsedLimit) ? parsedLimit : 50;
+    const sessions = opts.store
+      .list({ workspaceRoot, limit })
+      .map((session) => ({
+        id: session.id,
+        workspaceRoot: session.workspaceRoot,
+        agent: session.agent,
+        model: session.model,
+        status: session.status,
+        createdAt: session.createdAt ?? 0,
+      }));
+    return c.json({ sessions });
+  });
+
+  app.get("/sessions/:id", async (c) => {
     const session = opts.store.get(c.req.param("id"));
     if (!session) return c.json({ error: "Not found" }, 404);
-    return c.json(sessionPayload(session));
+    const attached = await attachResumedSession(session);
+    if (attached.error) {
+      return c.json({ error: attached.error }, 400);
+    }
+    return c.json({
+      ...sessionPayload(session),
+      messages: session.messages,
+    });
   });
 
   app.post("/sessions/:id/messages", async (c) => {
     const session = opts.store.get(c.req.param("id"));
     if (!session) return c.json({ error: "Not found" }, 404);
+    const attached = await attachResumedSession(session);
+    if (attached.error) {
+      return c.json({ error: attached.error }, 400);
+    }
     if (session.status !== "idle") {
       return c.json({ error: "Session not idle" }, 409);
     }
@@ -356,7 +477,10 @@ export function createApp(opts: {
       workspaceRoot: session.workspaceRoot,
       sessionId: session.id,
       planJson: session.planJson,
+      priorStateMarkdown: session.priorStateMarkdown,
+      compactionSummaries: (session.compactions ?? []).map((c) => c.summary),
       recentTexts,
+      rollingSummary: config.memory?.rollingSummary === true,
       summarize,
     });
     if (session.sandboxMode === "worktree") {
@@ -384,7 +508,45 @@ export function createApp(opts: {
       planJson: session.planJson,
       priorStateMarkdown: session.priorStateMarkdown ?? "",
       activeSkills: session.activeSkills ?? [],
+      injectedDurableIds: injectedDurableIds.get(session.id) ?? [],
     });
+  });
+
+  app.post("/sessions/:id/memory", async (c) => {
+    const session = opts.store.get(c.req.param("id"));
+    if (!session) return c.json({ error: "Not found" }, 404);
+    const db = sqliteDatabase(opts.store);
+    if (!db)
+      return c.json({ error: "Durable memory requires sqlite store" }, 400);
+    let json: unknown;
+    try {
+      json = await c.req.json();
+    } catch {
+      return c.json({ error: "Bad request" }, 400);
+    }
+    const parsed = writeMemoryRequestSchema.safeParse(json);
+    if (!parsed.success) {
+      return c.json({ error: "Bad request", issues: parsed.error.issues }, 400);
+    }
+    const row = await writeDurableMemory(db, {
+      workspaceRoot: session.workspaceRoot,
+      content: parsed.data.content,
+      pinned: parsed.data.pinned === true,
+    });
+    return c.json(row, 201);
+  });
+
+  app.get("/memory/search", (c) => {
+    const q = c.req.query("q");
+    const workspaceRoot = c.req.query("workspaceRoot");
+    if (!q || !workspaceRoot) {
+      return c.json({ error: "q and workspaceRoot required" }, 400);
+    }
+    const db = sqliteDatabase(opts.store);
+    if (!db)
+      return c.json({ error: "Durable memory requires sqlite store" }, 400);
+    const memories = searchDurableMemories(db, q, workspaceRoot);
+    return c.json({ memories });
   });
 
   app.get("/skills", (c) => {
@@ -546,10 +708,35 @@ export function createApp(opts: {
       if (!entries) continue;
       hooks[event] = entries.map((entry) => ({
         matcher: entry.matcher,
-        command: commandPathOnly(entry.command),
+        command: commandPathOnly(entry.command ?? ""),
       }));
     }
     return c.json({ hooks });
+  });
+
+  app.post("/sessions/:id/hooks/test", async (c) => {
+    const session = opts.store.get(c.req.param("id"));
+    if (!session) return c.json({ error: "Not found" }, 404);
+    let json: unknown;
+    try {
+      json = await c.req.json();
+    } catch {
+      return c.json({ error: "Bad request" }, 400);
+    }
+    if (!isRecord(json) || typeof json.event !== "string") {
+      return c.json({ error: "Bad request" }, 400);
+    }
+    if (!opts.hooks) return c.json({ decision: "allow" });
+    try {
+      return c.json(await opts.hooks.run(json.event, json.payload));
+    } catch (error) {
+      return c.json(
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        400,
+      );
+    }
   });
 
   // Phase 0: close SSE after session.status idle|error so app.request tests finish.
@@ -640,13 +827,23 @@ export function createApp(opts: {
       tools,
       permission: wait,
       hooks: opts.hooks,
+      context: {
+        windowTokens: config.context?.windowTokens,
+      },
+      overflowThreshold: config.context?.overflowThreshold,
+      onOverflow: ({ kind, estimatedTokens }) =>
+        runOverflowCompact(session, kind, estimatedTokens),
       observability: opts.observability,
       skillLoadPaths: config.skills?.loadPaths,
+      webfetchAllowedHosts: config.tools?.webfetch?.allowedHosts,
+      webfetchMaxBytes: config.tools?.webfetch?.maxBytes,
+      memoryDb: sqliteDatabase(opts.store),
       skillsConfig: {
         catalog: config.skills?.catalog,
         catalogMaxSkills: config.skills?.catalogMaxSkills,
         catalogMaxDescriptionChars: config.skills?.catalogMaxDescriptionChars,
       },
+      preCompactTokenThreshold: config.budget?.preCompactTokenThreshold,
     })) {
       if (event.type === "usage.turn") {
         processUsage.inputTokens += event.inputTokens;
@@ -673,16 +870,38 @@ export function createApp(opts: {
     publishIfSkillsChanged();
   }
 
-  async function runCompact(session: StoredSession) {
+  async function* runOverflowCompact(
+    session: StoredSession,
+    kind: "auto",
+    estimatedTokens: number,
+  ): AsyncIterable<ZoxEvent> {
+    for await (const event of compactSessionTurn({
+      session,
+      summarize,
+      hooks: opts.hooks,
+      kind,
+      estimatedTokens,
+    })) {
+      yield event;
+    }
+    opts.observability?.recordCompaction(kind);
+    opts.store.save(session);
+  }
+
+  async function runCompact(
+    session: StoredSession,
+    kind: "manual" | "auto" = "manual",
+  ) {
     bus.beginTurn(session.id);
     for await (const event of compactSessionTurn({
       session,
       summarize,
       hooks: opts.hooks,
+      kind,
     })) {
       bus.publish(session.id, event);
     }
-    opts.observability?.recordCompaction("manual");
+    opts.observability?.recordCompaction(kind);
     opts.store.save(session);
   }
 
@@ -785,6 +1004,18 @@ export function createApp(opts: {
         return { sandboxMode: session.sandboxMode };
       case "trace":
         return { lastTraceId: session.lastTraceId ?? null };
+      case "remember": {
+        const content = args.join(" ").trim();
+        if (!content) return { error: "text required" };
+        const db = sqliteDatabase(opts.store);
+        if (!db) return { error: "Durable memory requires sqlite store" };
+        const row = await writeDurableMemory(db, {
+          workspaceRoot: session.workspaceRoot,
+          content,
+          pinned: true,
+        });
+        return { ok: true, id: row.id, pinned: true };
+      }
       default:
         return { error: `Unknown command: ${name}` };
     }
@@ -897,6 +1128,11 @@ function defaultTools(): ToolRegistry {
   return tools;
 }
 
+function sqliteDatabase(store: SessionStore) {
+  if (store instanceof SqliteSessionStore) return store.db;
+  return undefined;
+}
+
 function sessionPayload(session: StoredSession) {
   return {
     id: session.id,
@@ -973,6 +1209,28 @@ function loadAutoSkills(
       path: skill.path,
     });
   }
+}
+
+function createRouterSummarizer(
+  router: AppRouter,
+  model?: string,
+): SessionSummarizer {
+  return async (prompt) => {
+    if (!model) return "compacted";
+    try {
+      router.resolve(model);
+    } catch {
+      return "compacted";
+    }
+    let text = "";
+    for await (const event of router.streamChat({
+      model,
+      messages: [{ role: "user", content: prompt }],
+    })) {
+      if (event.type === "text-delta") text += event.text;
+    }
+    return text || "compacted";
+  };
 }
 
 function metricsClientIsLocal(c: {

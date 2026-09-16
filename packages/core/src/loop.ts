@@ -17,7 +17,10 @@ import type { ToolRegistry, ToolResult } from "@zox/tools";
 import { getAgentProfile, toolMatchesProfile } from "./agents.ts";
 import { createId } from "./ids.ts";
 import { evaluatePermission } from "./permissions.ts";
+import { runSoftPreCompact } from "./soft-compact.ts";
 import type { StoredMessage, StoredSession } from "./store.ts";
+
+const DEFAULT_PRE_COMPACT_TOKEN_THRESHOLD = 150_000;
 
 const MAX_TOOL_ITERATIONS = 20;
 const UNKNOWN_WINDOW_TOKENS = 128_000;
@@ -71,9 +74,18 @@ export async function* runTurn(opts: {
   permission?: PermissionResponder;
   hooks?: HookRunner;
   context?: ContextEngine;
+  overflowThreshold?: number;
+  onOverflow?: (info: {
+    kind: "auto";
+    estimatedTokens: number;
+  }) => Promise<void> | AsyncIterable<ZoxEvent>;
   observability?: TurnObservability;
   skillLoadPaths?: string[];
+  webfetchAllowedHosts?: string[];
+  webfetchMaxBytes?: number;
+  memoryDb?: import("bun:sqlite").Database;
   skillsConfig?: CatalogOptions;
+  preCompactTokenThreshold?: number;
   ids?: {
     messageId(): string;
     turnId(): string;
@@ -104,9 +116,18 @@ async function* runTurnBody(opts: {
   permission?: PermissionResponder;
   hooks?: HookRunner;
   context?: ContextEngine;
+  overflowThreshold?: number;
+  onOverflow?: (info: {
+    kind: "auto";
+    estimatedTokens: number;
+  }) => Promise<void> | AsyncIterable<ZoxEvent>;
   observability?: TurnObservability;
   skillLoadPaths?: string[];
+  webfetchAllowedHosts?: string[];
+  webfetchMaxBytes?: number;
+  memoryDb?: import("bun:sqlite").Database;
   skillsConfig?: CatalogOptions;
+  preCompactTokenThreshold?: number;
   ids?: {
     messageId(): string;
     turnId(): string;
@@ -156,7 +177,77 @@ async function* runTurnBody(opts: {
     }
   }
 
-  yield* emitContextWarnings(opts.session, opts.context, opts.observability);
+  const estimated = estimateTurnTokens(opts);
+  const hardOverflow = isHardOverflow(
+    estimated,
+    opts.context,
+    opts.overflowThreshold,
+  );
+  yield* emitContextWarnings(
+    opts.session,
+    estimated,
+    opts.context,
+    opts.observability,
+    opts.overflowThreshold,
+  );
+
+  if (hardOverflow) {
+    try {
+      const overflowResult = opts.onOverflow?.({
+        kind: "auto",
+        estimatedTokens: estimated,
+      });
+      if (overflowResult) {
+        if (isAsyncIterable(overflowResult)) {
+          for await (const event of overflowResult) {
+            if (event.type === "session.status" && event.status === "idle") {
+              continue;
+            }
+            yield event;
+          }
+        } else {
+          await overflowResult;
+        }
+        opts.session.status = "running";
+        yield {
+          type: "session.status",
+          sessionId: opts.session.id,
+          status: "running",
+        };
+      } else {
+        opts.session.status = "running";
+      }
+    } catch (error) {
+      opts.session.status = "error";
+      yield {
+        type: "error",
+        sessionId: opts.session.id,
+        message: error instanceof Error ? error.message : String(error),
+        code: "context.compact_failed",
+      };
+      yield {
+        type: "session.status",
+        sessionId: opts.session.id,
+        status: "error",
+      };
+      return;
+    }
+  }
+
+  const threshold =
+    opts.preCompactTokenThreshold ?? DEFAULT_PRE_COMPACT_TOKEN_THRESHOLD;
+  if (
+    estimated >= threshold &&
+    !hardOverflow &&
+    !opts.session.softPreCompactPending
+  ) {
+    await runSoftPreCompact({
+      session: opts.session,
+      hooks: opts.hooks,
+      estimatedTokens: estimated,
+    });
+    opts.session.softPreCompactPending = true;
+  }
 
   const profile = getAgentProfile(opts.session.agent);
   const toolSchemas = opts.tools
@@ -318,16 +409,65 @@ async function* runTurnBody(opts: {
   };
 }
 
+function assembleSessionMessages(
+  session: StoredSession,
+  skillLoadPaths?: string[],
+  skillsConfig?: CatalogOptions,
+) {
+  return assembleProviderMessages({
+    messages: session.messages,
+    compactions: session.compactions,
+    skillsCatalog: buildSkillsCatalog(
+      discoverSkills({
+        workspaceRoot: session.workspaceRoot,
+        loadPaths: skillLoadPaths,
+      }),
+      skillsConfig,
+    ),
+    skillBodies: session.activeSkills?.map((skill) => skill.body),
+    priorStateMarkdown: session.priorStateMarkdown,
+    systemNotes: session.systemNotes,
+  });
+}
+
+function estimateTurnTokens(opts: {
+  session: StoredSession;
+  context?: ContextEngine;
+  skillLoadPaths?: string[];
+  skillsConfig?: CatalogOptions;
+}): number {
+  const assembled = assembleSessionMessages(
+    opts.session,
+    opts.skillLoadPaths,
+    opts.skillsConfig,
+  );
+  return opts.context?.estimateTokens
+    ? opts.context.estimateTokens(
+        assembled.map((message) => message.content).join(""),
+      )
+    : estimateSession(assembled);
+}
+
+function isHardOverflow(
+  estimated: number,
+  context?: ContextEngine,
+  overflowThreshold?: number,
+): boolean {
+  const knownWindow = context?.windowTokens;
+  if (knownWindow === undefined) {
+    return estimated > UNKNOWN_WINDOW_TOKENS * UNKNOWN_OVERFLOW_RATIO;
+  }
+  const ratio = overflowThreshold ?? KNOWN_OVERFLOW_RATIO;
+  return estimated > knownWindow * ratio;
+}
+
 async function* emitContextWarnings(
   session: StoredSession,
+  estimated: number,
   context?: ContextEngine,
   observability?: TurnObservability,
+  overflowThreshold?: number,
 ): AsyncIterable<ZoxEvent> {
-  const estimated = context?.estimateTokens
-    ? context.estimateTokens(
-        session.messages.map((message) => message.content).join(""),
-      )
-    : estimateSession(session.messages);
   observability?.recordContextEstimated?.(estimated);
   const knownWindow = context?.windowTokens;
   yield {
@@ -347,22 +487,22 @@ async function* emitContextWarnings(
         code: "context.window_unknown",
       };
     }
-    if (estimated > UNKNOWN_WINDOW_TOKENS * UNKNOWN_OVERFLOW_RATIO) {
-      yield {
-        type: "context.overflow",
-        sessionId: session.id,
-        estimatedTokens: estimated,
-      };
-    }
-    return;
   }
-  if (estimated > knownWindow * KNOWN_OVERFLOW_RATIO) {
+  if (isHardOverflow(estimated, context, overflowThreshold)) {
     yield {
       type: "context.overflow",
       sessionId: session.id,
       estimatedTokens: estimated,
     };
   }
+}
+
+function isAsyncIterable(
+  value: Promise<void> | AsyncIterable<ZoxEvent>,
+): value is AsyncIterable<ZoxEvent> {
+  return (
+    typeof value === "object" && value !== null && Symbol.asyncIterator in value
+  );
 }
 
 type ModelRound =
@@ -397,20 +537,11 @@ async function* consumeModelRound(opts: {
   for await (const part of opts.router.streamChat({
     model: opts.session.model,
     messages: toChatMessages(
-      assembleProviderMessages({
-        messages: opts.session.messages,
-        compactions: opts.session.compactions,
-        skillsCatalog: buildSkillsCatalog(
-          discoverSkills({
-            workspaceRoot: opts.session.workspaceRoot,
-            loadPaths: opts.skillLoadPaths,
-          }),
-          opts.skillsConfig,
-        ),
-        skillBodies: opts.session.activeSkills?.map((skill) => skill.body),
-        priorStateMarkdown: opts.session.priorStateMarkdown,
-        systemNotes: opts.session.systemNotes,
-      }),
+      assembleSessionMessages(
+        opts.session,
+        opts.skillLoadPaths,
+        opts.skillsConfig,
+      ),
     ),
     tools: opts.tools,
   })) {
@@ -467,6 +598,9 @@ async function* executeToolCall(input: {
     hooks?: HookRunner;
     observability?: TurnObservability;
     skillLoadPaths?: string[];
+    webfetchAllowedHosts?: string[];
+    webfetchMaxBytes?: number;
+    memoryDb?: import("bun:sqlite").Database;
     ids?: {
       messageId(): string;
       turnId(): string;
@@ -584,6 +718,9 @@ async function* executeToolCall(input: {
               agent: opts.session.agent,
             },
             loadPaths: opts.skillLoadPaths,
+            allowedHosts: opts.webfetchAllowedHosts,
+            webfetchMaxBytes: opts.webfetchMaxBytes,
+            memoryDb: opts.memoryDb,
             activateSkill: (skill) => {
               opts.session.activeSkills = activateSkill(
                 opts.session.activeSkills ?? [],

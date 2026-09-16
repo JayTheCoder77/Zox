@@ -89,4 +89,24 @@ describe("assembleProviderMessages", () => {
     });
     expect(provider[1]).toMatchObject({ role: "system", content: "FULL BODY" });
   });
+
+  test("systemNotes appear before priorStateMarkdown in the prefix list", () => {
+    const messages = fourMessages();
+    const provider = assembleProviderMessages({
+      messages,
+      systemNotes: ["HOOK NOTE"],
+      priorStateMarkdown: "PRIOR STATE",
+    });
+    expect(provider[0]).toMatchObject({
+      id: "hook:notes",
+      role: "system",
+      content: "HOOK NOTE",
+    });
+    expect(provider[1]).toMatchObject({
+      id: "prior-state",
+      role: "system",
+      content: "PRIOR STATE",
+    });
+    expect(provider.slice(2)).toEqual(messages);
+  });
 });

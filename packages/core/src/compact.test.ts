@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { chmod, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -79,5 +80,54 @@ describe("compactSessionTurn", () => {
         compactions: sess.compactions,
       }),
     ).toHaveLength(2);
+  });
+
+  test("PreCompact matcher auto|manual is honored", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-precompact-"));
+    const autoFile = join(root, "auto.ran");
+    const manualFile = join(root, "manual.ran");
+    const autoHook = join(root, "auto.sh");
+    const manualHook = join(root, "manual.sh");
+    await Bun.write(
+      autoHook,
+      `#!/bin/sh\ntouch "${autoFile}"\nprintf '{"decision":"allow"}\\n'`,
+    );
+    await Bun.write(
+      manualHook,
+      `#!/bin/sh\ntouch "${manualFile}"\nprintf '{"decision":"allow"}\\n'`,
+    );
+    await chmod(autoHook, 0o755);
+    await chmod(manualHook, 0o755);
+    const hooks = createHookRunner({
+      files: [
+        {
+          zoxHooksVersion: 1,
+          hooks: {
+            PreCompact: [
+              { matcher: "auto", type: "command", command: autoHook },
+              { matcher: "manual", type: "command", command: manualHook },
+            ],
+          },
+        },
+      ],
+      trusted: true,
+      cwd: root,
+    });
+    const sess = session([
+      { id: "m1", role: "user", content: "a" },
+      { id: "m2", role: "assistant", content: "b" },
+      { id: "m3", role: "user", content: "c" },
+      { id: "m4", role: "user", content: "last" },
+    ]);
+    for await (const _ of compactSessionTurn({
+      session: sess,
+      summarize: async () => "SUM",
+      hooks,
+      kind: "auto",
+    })) {
+      /* drain */
+    }
+    expect(existsSync(autoFile)).toBe(true);
+    expect(existsSync(manualFile)).toBe(false);
   });
 });

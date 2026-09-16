@@ -88,8 +88,17 @@ export async function listen(opts?: {
       providers: providerMeta,
       sandbox: { mode: sandboxMode },
       observability: zoxConfig.observability ?? { metrics: metricsEnabled },
-      memory: { autoSummarize },
+      memory: {
+        autoSummarize,
+        summarizeModel: zoxConfig.memory?.summarizeModel,
+        startupInjectCount: zoxConfig.memory?.startupInjectCount,
+        rollingSummary: zoxConfig.memory?.rollingSummary,
+        autoInject: zoxConfig.memory?.autoInject,
+      },
       skills: zoxConfig.skills,
+      tools: zoxConfig.tools,
+      budget: zoxConfig.budget,
+      context: zoxConfig.context,
       hooks: hookFiles[0],
       worktreeCleanup:
         zoxConfig.sandbox?.worktree?.cleanup ??

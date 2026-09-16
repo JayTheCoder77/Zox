@@ -14,6 +14,7 @@
     "@zox/core": "workspace:*",
     "@zox/providers": "workspace:*",
     "@zox/server": "workspace:*",
+    "@zox/session": "workspace:*",
     "typescript": "catalog:"
   }
 }

@@ -35,6 +35,7 @@ describe("parseSlash", () => {
       "cancel",
       "sandbox",
       "trace",
+      "remember",
       "exit",
     ] as const;
     for (const name of mvpCommands) {
@@ -64,6 +65,10 @@ describe("parseArgs", () => {
     expect(parseArgs(["serve", "--port", "9000"]).positionals).toEqual([
       "serve",
     ]);
+  });
+
+  test("parses --session id", () => {
+    expect(parseArgs(["--session", "sess_abc"]).flags.session).toBe("sess_abc");
   });
 
   test("parses --no-tui and --workspace", () => {

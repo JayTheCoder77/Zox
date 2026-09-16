@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadZoxConfig, resolveConfigEnv } from "./load.ts";
+import { zoxConfigSchema } from "./schema.ts";
 
 describe("loadZoxConfig", () => {
   test("merges project config over defaults", async () => {
@@ -32,5 +33,24 @@ describe("loadZoxConfig", () => {
 describe("resolveConfigEnv", () => {
   test("substitutes env placeholders", () => {
     expect(resolveConfigEnv("${FOO}", { FOO: "bar" })).toBe("bar");
+  });
+});
+
+describe("zoxConfigSchema", () => {
+  test("parses Phase 1.5 context, budget, memory, and webfetch fields", () => {
+    const parsed = zoxConfigSchema.parse({
+      context: { overflowThreshold: 0.9 },
+      budget: { preCompactTokenThreshold: 120000 },
+      memory: {
+        autoSummarize: true,
+        summarizeModel: "mock/echo",
+        startupInjectCount: 5,
+        rollingSummary: true,
+        autoInject: ["preferences.md"],
+      },
+      tools: { webfetch: { maxBytes: 32000, allowedHosts: ["example.com"] } },
+    });
+    expect(parsed.budget?.preCompactTokenThreshold).toBe(120000);
+    expect(parsed.tools?.webfetch?.allowedHosts).toEqual(["example.com"]);
   });
 });

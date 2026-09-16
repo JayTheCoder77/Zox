@@ -23,9 +23,11 @@ export {
   type PermissionDecision,
   type PermissionRuleset,
 } from "./permissions.ts";
+export { runSoftPreCompact } from "./soft-compact.ts";
 export {
   type CreateSessionInput,
   createStoredSession,
+  type ListSessionsInput,
   MemorySessionStore,
   type SessionStore,
   type StoredMessage,

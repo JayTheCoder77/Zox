@@ -1,0 +1,1 @@
+Fetch a URL with HTTP GET and return the response body. Blocks loopback, private, and link-local addresses. Optional host allowlist. Body is capped by tools.webfetch.maxBytes and sandbox.maxToolOutputChars.

@@ -8,6 +8,7 @@
   },
   "devDependencies": {
     "@types/bun": "1.4.2",
+    "@zox/session": "workspace:*",
     "typescript": "catalog:"
   }
 }
