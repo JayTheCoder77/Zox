@@ -15,8 +15,7 @@ function isNoopDelegate(): boolean {
 
 async function forceFlushGlobalProvider(): Promise<void> {
   const raw = trace.getTracerProvider();
-  const provider =
-    raw instanceof ProxyTracerProvider ? raw.getDelegate() : raw;
+  const provider = raw instanceof ProxyTracerProvider ? raw.getDelegate() : raw;
   if (provider instanceof BasicTracerProvider) {
     await provider.forceFlush();
   }
@@ -230,7 +229,8 @@ describe("createObservability", () => {
 
   test("OTEL_EXPORTER_OTLP_ENDPOINT is used when config endpoint is absent", async () => {
     delete process.env.ZOXX_OBSERVABILITY;
-    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://otel.example:4318/v1/traces";
+    process.env.OTEL_EXPORTER_OTLP_ENDPOINT =
+      "http://otel.example:4318/v1/traces";
     trace.disable();
     const urls: string[] = [];
     const exporter = new InMemorySpanExporter();

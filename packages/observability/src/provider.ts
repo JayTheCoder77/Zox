@@ -77,9 +77,9 @@ export function assertOtlpEndpoint(endpoint: string): void {
   }
 }
 
-export function installTracerProvider(
-  opts: InstallTracerProviderOpts,
-): { owned: boolean } {
+export function installTracerProvider(opts: InstallTracerProviderOpts): {
+  owned: boolean;
+} {
   if (hasRealGlobalTracerProvider()) {
     return { owned: false };
   }

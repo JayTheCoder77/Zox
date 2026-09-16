@@ -1,12 +1,12 @@
 import { createMetrics, type ZoxMetrics } from "./metrics.ts";
 import {
   assertOtlpEndpoint,
+  type CreateObservabilityOpts,
   installTracerProvider,
+  type OtlpExporterFactory,
   resolveOtlpEndpoint,
   resolveServiceName,
   shutdownOwnedTracerProvider,
-  type CreateObservabilityOpts,
-  type OtlpExporterFactory,
 } from "./provider.ts";
 import {
   disabledTraceId,
@@ -15,8 +15,7 @@ import {
   withToolSpan,
 } from "./traces.ts";
 
-export type { ZoxMetrics };
-export type { CreateObservabilityOpts, OtlpExporterFactory };
+export type { CreateObservabilityOpts, OtlpExporterFactory, ZoxMetrics };
 
 export type Observability = {
   startTurn(attrs?: { "zox.skills.active"?: string }): {
