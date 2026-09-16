@@ -8,11 +8,15 @@ mock.module("@zox/server", () => ({
   },
 }));
 
+const createSession = mock(async () => ({ id: "sess_embed" }));
+const getSession = mock(async () => ({ id: "sess_resume" }));
+
 mock.module("@zox/sdk", () => ({
   createZoxClient() {
     return {
       sessions: {
-        create: async () => ({ id: "sess_embed" }),
+        create: createSession,
+        get: getSession,
       },
     };
   },
@@ -31,6 +35,8 @@ const { runEmbed } = await import("./embed.ts");
 describe("runEmbed", () => {
   afterEach(() => {
     stop.mockClear();
+    createSession.mockClear();
+    getSession.mockClear();
   });
 
   test("stops the embedded listen() server after TUI exit", async () => {
@@ -56,5 +62,13 @@ describe("runEmbed", () => {
   test("stops the embedded listen() server after REPL exit", async () => {
     await runEmbed({ port: 18787, noTui: true });
     expect(stop).toHaveBeenCalled();
+    expect(createSession).toHaveBeenCalled();
+    expect(getSession).not.toHaveBeenCalled();
+  });
+
+  test("passes --session to sessions.get instead of create", async () => {
+    await runEmbed({ port: 18787, noTui: true, session: "sess_resume" });
+    expect(getSession).toHaveBeenCalledWith("sess_resume");
+    expect(createSession).not.toHaveBeenCalled();
   });
 });

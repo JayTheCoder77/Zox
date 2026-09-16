@@ -12,6 +12,7 @@ export const SLASH_NAMES = [
   "cancel",
   "sandbox",
   "trace",
+  "remember",
   "exit",
 ] as const;
 
@@ -26,6 +27,7 @@ export type CliFlags = {
   noTui?: boolean;
   sandbox?: "host" | "worktree";
   port?: number;
+  session?: string;
 };
 
 export function parseSlash(
@@ -80,6 +82,10 @@ export function parseArgs(argv: string[]): {
     if (arg === "--port" && argv[i + 1]) {
       const port = Number(argv[++i]);
       if (!Number.isNaN(port)) flags.port = port;
+      continue;
+    }
+    if (arg === "--session" && argv[i + 1]) {
+      flags.session = argv[++i];
       continue;
     }
     if (arg === "--sandbox" && argv[i + 1]) {

@@ -24,3 +24,18 @@ export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
 
 export const sessionRecordSchema = createSessionResponseSchema;
 export type SessionRecord = CreateSessionResponse;
+
+export const sessionSummarySchema = z.object({
+  id: z.string(),
+  workspaceRoot: z.string(),
+  agent: z.string(),
+  model: z.string(),
+  status: sessionStatusSchema,
+  createdAt: z.number(),
+});
+export type SessionSummary = z.infer<typeof sessionSummarySchema>;
+
+export const sessionListResponseSchema = z.object({
+  sessions: z.array(sessionSummarySchema),
+});
+export type SessionListResponse = z.infer<typeof sessionListResponseSchema>;

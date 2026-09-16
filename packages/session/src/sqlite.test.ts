@@ -209,6 +209,31 @@ current body from disk
     expect(store.get(created.id)).toEqual(next);
   });
 
+  test("list returns sessions for a workspace newest first with createdAt", async () => {
+    const store = new SqliteSessionStore({ path: ":memory:" });
+    const older = store.create({
+      workspaceRoot: "/tmp/ws",
+      agent: "build",
+      model: "mock/echo",
+    });
+    await Bun.sleep(5);
+    const newer = store.create({
+      workspaceRoot: "/tmp/ws",
+      agent: "plan",
+      model: "mock/echo",
+    });
+    store.create({
+      workspaceRoot: "/tmp/other",
+      agent: "build",
+      model: "mock/echo",
+    });
+
+    const listed = store.list({ workspaceRoot: "/tmp/ws", limit: 50 });
+    expect(listed.map((session) => session.id)).toEqual([newer.id, older.id]);
+    expect(typeof listed[0]?.createdAt).toBe("number");
+    expect(listed[0]?.createdAt).toBeGreaterThan(listed[1]?.createdAt ?? 0);
+  });
+
   test("addUsage / listUsage round-trip", () => {
     const store = new SqliteSessionStore({ path: ":memory:" });
     const session = store.create({
@@ -242,13 +267,19 @@ current body from disk
       )
       .all()
       .map((row) => row.name);
-    expect(tables).toEqual([
-      "compactions",
-      "messages",
-      "schema_migrations",
-      "sessions",
-      "usage",
-    ]);
+    expect(tables).toContain("compactions");
+    expect(tables).toContain("messages");
+    expect(tables).toContain("memories");
+    expect(tables).toContain("schema_migrations");
+    expect(tables).toContain("sessions");
+    expect(tables).toContain("usage");
+    expect(tables).not.toContain("embedding");
+
+    const memoryColumns = db
+      .query<{ name: string }, []>("PRAGMA table_info(memories)")
+      .all()
+      .map((row) => row.name);
+    expect(memoryColumns).toContain("workspace_root");
 
     const columns = tables.flatMap((table) =>
       db
@@ -279,7 +310,7 @@ describe("SqliteSessionStore schema_migrations", () => {
       )
       .all()
       .map((row) => row.version);
-    expect(versions).toEqual([1, 2, 3]);
+    expect(versions).toEqual([1, 2, 3, 4]);
     expect(store.db).toBeInstanceOf(Database);
   });
 });

@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp } from "node:fs/promises";
+import { chmod, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MemorySessionStore } from "@zox/core";
+import { createHookRunner } from "@zox/hooks";
 import { createObservability } from "@zox/observability";
 import { createMockAdapter, createProviderRouter } from "@zox/providers";
+import { SqliteSessionStore } from "@zox/session";
 import { createBuiltinTools, ToolRegistry } from "@zox/tools";
 import { createApp } from "./app.ts";
 
@@ -125,6 +127,163 @@ describe("createApp", () => {
     });
     const json = (await got.json()) as { status: string };
     expect(json.status).toBe("idle");
+  });
+
+  test("GET /sessions lists by workspaceRoot and resume attaches without autoLoad", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-session-resume-"));
+    const dbPath = join(root, "state.sqlite");
+    await Bun.write(
+      join(root, ".zox/skills/helper/SKILL.md"),
+      "---\nname: helper\ndescription: help\n---\nhelper body\n",
+    );
+    await Bun.write(
+      join(root, ".zox/skills/extra/SKILL.md"),
+      "---\nname: extra\ndescription: extra\n---\nextra body\n",
+    );
+    const resumeMarker = join(root, "resume.ran");
+    const resumeHook = join(root, "on-resume.sh");
+    await Bun.write(
+      resumeHook,
+      `#!/bin/sh\ntouch "${resumeMarker}"\nprintf '%s\\n' '{"decision":"allow","message":"hello resume"}'\n`,
+    );
+    await chmod(resumeHook, 0o755);
+
+    const first = createApp({
+      token,
+      store: new SqliteSessionStore({ path: dbPath }),
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+      config: {
+        sandbox: { mode: "host" },
+        skills: { autoLoad: ["helper"] },
+      },
+    });
+    const session = await createSession(first, root);
+    const eventsRes = await first.request(`/sessions/${session.id}/events`, {
+      headers: auth,
+    });
+    const send = first.request(`/sessions/${session.id}/messages`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "remember this" }),
+    });
+    const streamed = await readSseUntil(eventsRes, (body) =>
+      body.includes("message.completed"),
+    );
+    await send;
+    await streamed.drain();
+
+    const missing = await first.request("/sessions", { headers: auth });
+    expect(missing.status).toBe(400);
+
+    const resumed = createApp({
+      token,
+      store: new SqliteSessionStore({ path: dbPath }),
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+      hooks: createHookRunner({
+        files: [
+          {
+            zoxHooksVersion: 1,
+            hooks: {
+              SessionStart: [
+                { matcher: "resume", type: "command", command: resumeHook },
+              ],
+            },
+          },
+        ],
+        trusted: true,
+        cwd: root,
+      }),
+      config: {
+        sandbox: { mode: "host" },
+        skills: { autoLoad: ["helper", "extra"] },
+      },
+    });
+
+    const got = await resumed.request(`/sessions/${session.id}`, {
+      headers: auth,
+    });
+    expect(got.status).toBe(200);
+    const loaded = (await got.json()) as {
+      messages: Array<{ content: string }>;
+    };
+    expect(loaded.messages.some((m) => m.content === "remember this")).toBe(
+      true,
+    );
+
+    const listed = await resumed.request(
+      `/sessions?workspaceRoot=${encodeURIComponent(root)}&limit=50`,
+      { headers: auth },
+    );
+    expect(listed.status).toBe(200);
+    const listJson = (await listed.json()) as {
+      sessions: Array<{ id: string; createdAt: number }>;
+    };
+    expect(listJson.sessions.map((s) => s.id)).toContain(session.id);
+    expect(typeof listJson.sessions[0]?.createdAt).toBe("number");
+
+    const events2 = await resumed.request(`/sessions/${session.id}/events`, {
+      headers: auth,
+    });
+    const send2 = resumed.request(`/sessions/${session.id}/messages`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "again" }),
+    });
+    const streamed2 = await readSseUntil(events2, (body) =>
+      body.includes("message.completed"),
+    );
+    await send2;
+    await streamed2.drain();
+
+    expect(await Bun.file(resumeMarker).exists()).toBe(true);
+
+    const skills = await resumed.request(`/sessions/${session.id}/skills`, {
+      headers: auth,
+    });
+    const skillJson = (await skills.json()) as {
+      active: Array<{ name: string }>;
+    };
+    expect(skillJson.active.map((s) => s.name)).toEqual(["helper"]);
+  });
+
+  test("resume hook throw stays retryable on the next attach", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-resume-retry-"));
+    const dbPath = join(root, "state.sqlite");
+    const first = createApp({
+      token,
+      store: new SqliteSessionStore({ path: dbPath }),
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+      config: { sandbox: { mode: "host" } },
+    });
+    const session = await createSession(first, root);
+
+    let resumeAttempts = 0;
+    const resumed = createApp({
+      token,
+      store: new SqliteSessionStore({ path: dbPath }),
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+      hooks: {
+        async run(event) {
+          if (event !== "SessionStart") return { decision: "allow" as const };
+          resumeAttempts += 1;
+          if (resumeAttempts === 1) throw new Error("resume hook failed");
+          return { decision: "allow" as const };
+        },
+      },
+      config: { sandbox: { mode: "host" } },
+    });
+
+    const failed = await resumed.request(`/sessions/${session.id}`, {
+      headers: auth,
+    });
+    expect(failed.status).toBe(400);
+    expect(resumeAttempts).toBe(1);
+
+    const retried = await resumed.request(`/sessions/${session.id}`, {
+      headers: auth,
+    });
+    expect(retried.status).toBe(200);
+    expect(resumeAttempts).toBe(2);
   });
 
   test("second turn SSE replays only the current turn", async () => {
@@ -316,6 +475,85 @@ describe("createApp", () => {
     expect(usage.outputTokens).toBeGreaterThan(0);
   });
 
+  test("auto-compacts on hard overflow so the provider payload skips compacted range", async () => {
+    const store = new MemorySessionStore();
+    let firstPayload: Array<{ role: string; content?: string }> | undefined;
+    const tools = new ToolRegistry();
+    for (const tool of createBuiltinTools()) tools.register(tool);
+    const server = createApp({
+      token,
+      store,
+      tools,
+      summarize: async () => "COMPACT-SUMMARY-UNIQUE",
+      router: createProviderRouter({
+        adapters: [
+          createMockAdapter({
+            script: async function* (params) {
+              if (!firstPayload) {
+                firstPayload = params.messages.map((message) => ({
+                  role: message.role,
+                  content: "content" in message ? String(message.content) : "",
+                }));
+              }
+              yield { type: "text-delta", text: "ok" };
+              yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+              yield { type: "done" };
+            },
+          }),
+        ],
+      }),
+      config: {
+        sandbox: { mode: "host" },
+        context: { windowTokens: 100, overflowThreshold: 0.85 },
+      },
+    });
+    const session = await createSession(server);
+    const stored = store.get(session.id);
+    expect(stored).toBeDefined();
+    stored!.messages = [
+      {
+        id: "old_u",
+        role: "user",
+        content: `SKIPPED-RANGE-UNIQUE ${"x".repeat(400)}`,
+      },
+      {
+        id: "old_a",
+        role: "assistant",
+        content: `SKIPPED-ASSISTANT-UNIQUE ${"y".repeat(400)}`,
+      },
+    ];
+    store.save(stored!);
+
+    const eventsRes = await server.request(`/sessions/${session.id}/events`, {
+      headers: auth,
+    });
+    const send = server.request(`/sessions/${session.id}/messages`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "keep this last user" }),
+    });
+    const body = await eventsRes.text();
+    await send;
+
+    expect(body).toContain("context.overflow");
+    expect(body).toContain("context.compacted");
+    expect(body).toContain("message.completed");
+    expect(firstPayload).toBeDefined();
+    const joined = firstPayload!
+      .map((message) => message.content ?? "")
+      .join("\n");
+    expect(joined).toContain("COMPACT-SUMMARY-UNIQUE");
+    expect(joined).not.toContain("SKIPPED-RANGE-UNIQUE");
+    expect(joined).not.toContain("SKIPPED-ASSISTANT-UNIQUE");
+    expect(joined).toContain("keep this last user");
+    const after = store.get(session.id);
+    expect(
+      after?.messages.some((message) =>
+        message.content.includes("SKIPPED-RANGE-UNIQUE"),
+      ),
+    ).toBe(true);
+  });
+
   test("compact returns 200", async () => {
     const server = app({
       summarize: async () => "SUM",
@@ -377,6 +615,61 @@ describe("createApp", () => {
     const autoDir = join(root, ".zox/memory/auto");
     const listing = await Array.fromAsync(new Bun.Glob("*.md").scan(autoDir));
     expect(listing.length).toBeGreaterThan(0);
+  });
+
+  test("close with rollingSummary writes rolling-summary.md and includes session context in prompt", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-close-roll-"));
+    const store = new MemorySessionStore();
+    let capturedPrompt = "";
+    const server = app({
+      store,
+      summarize: async (prompt) => {
+        capturedPrompt = prompt;
+        return "- Rolling bullet from close\n- Files: app.ts";
+      },
+      config: { memory: { autoSummarize: true, rollingSummary: true } },
+    });
+    const session = await createSession(server, root);
+    const stored = store.get(session.id);
+    expect(stored).toBeDefined();
+    stored!.planJson = [
+      { id: "1", content: "close-plan-goal", status: "in_progress" },
+    ];
+    stored!.priorStateMarkdown =
+      "## Prior state (auto)\n- Goal: close-prior-goal";
+    stored!.compactions = [
+      {
+        fromMessageId: "m1",
+        toMessageId: "m2",
+        summary: "CLOSE-COMPACT-SUMMARY",
+      },
+    ];
+    store.save(stored!);
+
+    const eventsRes = await server.request(`/sessions/${session.id}/events`, {
+      headers: auth,
+    });
+    await server.request(`/sessions/${session.id}/messages`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "wrap rolling" }),
+    });
+    await eventsRes.text();
+
+    const closed = await server.request(`/sessions/${session.id}/close`, {
+      method: "POST",
+      headers: auth,
+    });
+    expect(closed.status).toBe(200);
+    expect(capturedPrompt).toContain("close-plan-goal");
+    expect(capturedPrompt).toContain("## Prior state");
+    expect(capturedPrompt).toContain("CLOSE-COMPACT-SUMMARY");
+    expect(capturedPrompt).toContain("wrap rolling");
+
+    const rolling = await Bun.file(
+      join(root, ".zox/memory/rolling-summary.md"),
+    ).text();
+    expect(rolling).toContain("Rolling bullet from close");
   });
 
   test("/skill persists skill body and surfaces it on GET /memory", async () => {
@@ -703,5 +996,208 @@ describe("createApp", () => {
     expect(removed.status).toBe(200);
     expect(tools.get("mcp_github_create_issue")).toBeUndefined();
     await mcp.remove("github");
+  });
+
+  test("POST /sessions/:id/hooks/test runs runner and 404s unknown session", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ decision: "deny", reason: "nope" }), {
+        headers: { "content-type": "application/json" },
+      })) as unknown as typeof fetch;
+    try {
+      const server = app({
+        hooks: createHookRunner({
+          files: [
+            {
+              zoxHooksVersion: 1,
+              hooks: {
+                PreToolUse: [
+                  {
+                    matcher: "*",
+                    type: "http",
+                    url: "https://hooks.example/pre",
+                  },
+                ],
+              },
+            },
+          ],
+          trusted: true,
+          cwd: process.cwd(),
+        }),
+      });
+      const session = await createSession(server);
+      const tested = await server.request(
+        `/sessions/${session.id}/hooks/test`,
+        {
+          method: "POST",
+          headers: { ...auth, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event: "PreToolUse",
+            payload: {
+              tool: { name: "bash", arguments: { command: "ls" } },
+              session: { id: session.id, workspaceRoot: "/tmp/ws" },
+            },
+          }),
+        },
+      );
+      expect(tested.status).toBe(200);
+      expect(await tested.json()).toEqual({
+        decision: "deny",
+        reason: "nope",
+      });
+
+      const missing = await server.request(
+        "/sessions/sess_missing/hooks/test",
+        {
+          method: "POST",
+          headers: { ...auth, "Content-Type": "application/json" },
+          body: JSON.stringify({ event: "PreToolUse", payload: {} }),
+        },
+      );
+      expect(missing.status).toBe(404);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("POST /sessions/:id/memory then GET /memory/search ranks pins first", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-mem-http-"));
+    const server = createApp({
+      token,
+      store: new SqliteSessionStore({
+        workspaceRoot: root,
+        path: join(root, ".zox/state.sqlite"),
+      }),
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+      config: { sandbox: { mode: "host" } },
+    });
+    const session = await createSession(server, root);
+
+    const unpinned = await server.request(`/sessions/${session.id}/memory`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "alpha unpinned http fact" }),
+    });
+    expect(unpinned.status).toBe(201);
+
+    const pinned = await server.request(`/sessions/${session.id}/memory`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "alpha pinned http fact", pinned: true }),
+    });
+    expect(pinned.status).toBe(201);
+
+    const search = await server.request(
+      `/memory/search?q=alpha&workspaceRoot=${encodeURIComponent(root)}`,
+      { headers: auth },
+    );
+    expect(search.status).toBe(200);
+    const json = (await search.json()) as {
+      memories: Array<{ content: string; pinned: boolean }>;
+    };
+    expect(json.memories[0]?.pinned).toBe(true);
+    expect(json.memories.map((m) => m.content)).toEqual([
+      "alpha pinned http fact",
+      "alpha unpinned http fact",
+    ]);
+
+    const snapshot = await server.request(`/sessions/${session.id}/memory`, {
+      headers: auth,
+    });
+    const mem = (await snapshot.json()) as { injectedDurableIds: string[] };
+    expect(Array.isArray(mem.injectedDurableIds)).toBe(true);
+  });
+
+  test("slash remember via /commands pins project fact", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-remember-"));
+    const server = createApp({
+      token,
+      store: new SqliteSessionStore({
+        workspaceRoot: root,
+        path: join(root, ".zox/state.sqlite"),
+      }),
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+      config: { sandbox: { mode: "host" } },
+    });
+    const session = await createSession(server, root);
+    const help = await server.request(`/sessions/${session.id}/commands`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "help" }),
+    });
+    const helpJson = (await help.json()) as { commands: string[] };
+    expect(helpJson.commands).toContain("remember");
+
+    const remembered = await server.request(
+      `/sessions/${session.id}/commands`,
+      {
+        method: "POST",
+        headers: { ...auth, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "remember",
+          args: ["ship", "alpha", "tomorrow"],
+        }),
+      },
+    );
+    expect(remembered.status).toBe(200);
+
+    const search = await server.request(
+      `/memory/search?q=tomorrow&workspaceRoot=${encodeURIComponent(root)}`,
+      { headers: auth },
+    );
+    const json = (await search.json()) as {
+      memories: Array<{ content: string; pinned: boolean }>;
+    };
+    expect(json.memories[0]?.pinned).toBe(true);
+    expect(json.memories[0]?.content).toContain("ship alpha tomorrow");
+  });
+
+  test("GET /memory/search isolates memories by workspaceRoot", async () => {
+    const rootA = await mkdtemp(join(tmpdir(), "zox-mem-http-a-"));
+    const rootB = await mkdtemp(join(tmpdir(), "zox-mem-http-b-"));
+    const server = createApp({
+      token,
+      store: new SqliteSessionStore({
+        workspaceRoot: rootA,
+        path: join(rootA, ".zox/state.sqlite"),
+      }),
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+      config: { sandbox: { mode: "host" } },
+    });
+    const sessionA = await createSession(server, rootA);
+    const sessionB = await createSession(server, rootB);
+
+    const pinned = await server.request(`/sessions/${sessionA.id}/memory`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content: "sharedtoken http fact only in A",
+        pinned: true,
+      }),
+    });
+    expect(pinned.status).toBe(201);
+
+    const searchB = await server.request(
+      `/memory/search?q=sharedtoken&workspaceRoot=${encodeURIComponent(rootB)}`,
+      { headers: auth },
+    );
+    expect(searchB.status).toBe(200);
+    const jsonB = (await searchB.json()) as {
+      memories: Array<{ content: string }>;
+    };
+    expect(jsonB.memories).toEqual([]);
+
+    const searchA = await server.request(
+      `/memory/search?q=sharedtoken&workspaceRoot=${encodeURIComponent(rootA)}`,
+      { headers: auth },
+    );
+    expect(searchA.status).toBe(200);
+    const jsonA = (await searchA.json()) as {
+      memories: Array<{ content: string; pinned: boolean }>;
+    };
+    expect(jsonA.memories.map((m) => m.content)).toEqual([
+      "sharedtoken http fact only in A",
+    ]);
+    expect(sessionB.id).not.toBe(sessionA.id);
   });
 });

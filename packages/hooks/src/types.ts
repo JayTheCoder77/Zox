@@ -28,8 +28,10 @@ export type HookOutput = {
 
 export type HookEntry = {
   matcher: string;
-  type: "command";
-  command: string;
+  type: "command" | "http";
+  command?: string;
+  url?: string;
+  headers?: Record<string, string>;
   timeoutMs?: number;
 };
 

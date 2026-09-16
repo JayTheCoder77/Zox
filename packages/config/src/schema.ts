@@ -27,9 +27,33 @@ export const zoxConfigSchema = z.object({
         .optional(),
     })
     .optional(),
+  context: z
+    .object({
+      overflowThreshold: z.number().gt(0).lte(1).optional(),
+    })
+    .optional(),
+  budget: z
+    .object({
+      preCompactTokenThreshold: z.number().int().positive().optional(),
+    })
+    .optional(),
   memory: z
     .object({
       autoSummarize: z.boolean().optional(),
+      summarizeModel: z.string().optional(),
+      startupInjectCount: z.number().int().positive().optional(),
+      rollingSummary: z.boolean().optional(),
+      autoInject: z.array(z.string()).optional(),
+    })
+    .optional(),
+  tools: z
+    .object({
+      webfetch: z
+        .object({
+          maxBytes: z.number().int().positive().optional(),
+          allowedHosts: z.array(z.string()).optional(),
+        })
+        .optional(),
     })
     .optional(),
   skills: z

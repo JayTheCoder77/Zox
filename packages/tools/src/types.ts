@@ -13,7 +13,11 @@ export type ToolContext = {
   maxToolOutputChars: number;
   session: { id: string; workspaceRoot: string; agent: string };
   loadPaths?: string[];
+  allowedHosts?: string[];
+  webfetchMaxBytes?: number;
+  fetch?: typeof globalThis.fetch;
   activateSkill?: (skill: { name: string; body: string; path: string }) => void;
+  memoryDb?: import("bun:sqlite").Database;
 };
 
 export type ZoxTool = {

@@ -5,6 +5,7 @@ import {
   type CreateSessionInput,
   createId,
   createStoredSession,
+  type ListSessionsInput,
   type SessionStore,
   type StoredMessage,
   type StoredSession,
@@ -47,6 +48,7 @@ type SessionRow = {
   window_warned: number | null;
   usage_input_tokens: number;
   usage_output_tokens: number;
+  created_at: number;
   active_skills: string | null;
 };
 
@@ -159,6 +161,7 @@ export class SqliteSessionStore implements SessionStore {
       model: row.model,
       status: asStatus(row.status),
       messages,
+      createdAt: row.created_at,
     };
 
     if (row.last_trace_id !== null) {
@@ -190,8 +193,22 @@ export class SqliteSessionStore implements SessionStore {
     return session;
   }
 
+  list(opts: ListSessionsInput): StoredSession[] {
+    const limit = opts.limit ?? 50;
+    const rows = this.db
+      .query<SessionRow, [string, number]>(
+        "SELECT * FROM sessions WHERE workspace_root = ? ORDER BY created_at DESC LIMIT ?",
+      )
+      .all(opts.workspaceRoot, limit);
+    return rows.flatMap((row) => {
+      const session = this.get(row.id);
+      return session ? [session] : [];
+    });
+  }
+
   save(session: StoredSession): void {
     const now = Date.now();
+    const createdAt = session.createdAt ?? now;
     this.db.transaction(() => {
       this.db
         .query(
@@ -237,7 +254,7 @@ export class SqliteSessionStore implements SessionStore {
               : 0,
           session.usage.inputTokens,
           session.usage.outputTokens,
-          now,
+          createdAt,
           serializeActiveSkills(session.activeSkills),
         );
 

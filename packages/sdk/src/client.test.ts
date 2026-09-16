@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MemorySessionStore } from "@zox/core";
 import { createMockAdapter, createProviderRouter } from "@zox/providers";
-import { createApp } from "@zox/server";
+import { createApp } from "../../server/src/app.ts";
 import { createZoxClient } from "./client.ts";
 
 function testApp(overrides: Partial<Parameters<typeof createApp>[0]> = {}) {
@@ -48,6 +48,152 @@ describe("createZoxClient", () => {
     }
   });
 
+  test("waitForIdle drains until session.status idle", async () => {
+    const token = "sdk-token";
+    const hono = testApp({ token });
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: hono.fetch,
+    });
+    try {
+      const client = createZoxClient({
+        baseUrl: `http://127.0.0.1:${server.port}`,
+        token,
+      });
+      const session = await client.sessions.create({
+        workspaceRoot: "/tmp/ws",
+      });
+      await session.send("ping").waitForIdle();
+      const usage = await session.getUsage();
+      expect(usage.outputTokens).toBeGreaterThanOrEqual(0);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("collectText concatenates message.delta events", async () => {
+    const token = "sdk-token";
+    const hono = testApp({ token });
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: hono.fetch,
+    });
+    try {
+      const client = createZoxClient({
+        baseUrl: `http://127.0.0.1:${server.port}`,
+        token,
+      });
+      const session = await client.sessions.create({
+        workspaceRoot: "/tmp/ws",
+      });
+      const text = await session.send("ping").collectText();
+      expect(text).toBe("ping");
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("onTool is extra and events() still delivers tool events", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-sdk-ontool-"));
+    const token = "sdk-token";
+    const hono = testApp({
+      token,
+      router: createProviderRouter({
+        adapters: [
+          createMockAdapter({
+            script: async function* () {
+              yield {
+                type: "tool-call",
+                id: "tcw",
+                name: "write",
+                arguments: { path: "out.txt", content: "ok" },
+              };
+              yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+              yield { type: "done" };
+            },
+          }),
+        ],
+      }),
+    });
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: hono.fetch,
+    });
+    try {
+      const client = createZoxClient({
+        baseUrl: `http://127.0.0.1:${server.port}`,
+        token,
+      });
+      const session = await client.sessions.create({ workspaceRoot: root });
+      const run = session.send("write it");
+      const handled: string[] = [];
+      run.onTool((event) => {
+        handled.push(event.type);
+      });
+      const fromIterator: string[] = [];
+      for await (const event of run.events()) {
+        fromIterator.push(event.type);
+        if (event.type === "tool.permission_required") {
+          await run.respondPermission(event.requestId, { approved: true });
+        }
+      }
+      expect(handled).toContain("tool.permission_required");
+      expect(fromIterator).toContain("tool.permission_required");
+      expect(fromIterator).toContain("tool.started");
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("onTool throw does not halt waitForIdle", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-sdk-ontool-throw-"));
+    const token = "sdk-token";
+    const hono = testApp({
+      token,
+      router: createProviderRouter({
+        adapters: [
+          createMockAdapter({
+            script: async function* () {
+              yield {
+                type: "tool-call",
+                id: "tcw",
+                name: "write",
+                arguments: { path: "out.txt", content: "ok" },
+              };
+              yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+              yield { type: "done" };
+            },
+          }),
+        ],
+      }),
+    });
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: hono.fetch,
+    });
+    try {
+      const client = createZoxClient({
+        baseUrl: `http://127.0.0.1:${server.port}`,
+        token,
+      });
+      const session = await client.sessions.create({ workspaceRoot: root });
+      const run = session.send("write it");
+      run.onTool((event) => {
+        if (event.type === "tool.permission_required") {
+          void run.respondPermission(event.requestId, { approved: true });
+        }
+        throw new Error("subscriber exploded");
+      });
+      await run.waitForIdle();
+    } finally {
+      server.stop(true);
+    }
+  });
+
   test("second send() streams only the new turn deltas", async () => {
     const token = "sdk-token";
     const hono = testApp({ token });
@@ -69,6 +215,38 @@ describe("createZoxClient", () => {
       }
       const deltas: string[] = [];
       for await (const event of session.send("pong").events()) {
+        if (event.type === "message.delta") deltas.push(event.delta);
+      }
+      expect(deltas.join("")).toBe("pong");
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("sessions.list and sessions.get then send", async () => {
+    const token = "sdk-token";
+    const hono = testApp({ token });
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: hono.fetch,
+    });
+    try {
+      const client = createZoxClient({
+        baseUrl: `http://127.0.0.1:${server.port}`,
+        token,
+      });
+      const created = await client.sessions.create({
+        workspaceRoot: "/tmp/ws",
+      });
+      for await (const _ of created.send("ping").events()) {
+        /* drain */
+      }
+      const { sessions } = await client.sessions.list("/tmp/ws");
+      expect(sessions.some((s) => s.id === created.id)).toBe(true);
+      const resumed = await client.sessions.get(created.id);
+      const deltas: string[] = [];
+      for await (const event of resumed.send("pong").events()) {
         if (event.type === "message.delta") deltas.push(event.delta);
       }
       expect(deltas.join("")).toBe("pong");

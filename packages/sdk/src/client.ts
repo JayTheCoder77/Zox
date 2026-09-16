@@ -1,5 +1,6 @@
 import {
   createSessionResponseSchema,
+  sessionListResponseSchema,
   sessionSkillsResponseSchema,
   workspaceSkillsResponseSchema,
   type ZoxEvent,
@@ -18,36 +19,116 @@ export function createZoxClient(opts: { baseUrl: string; token: string }) {
     return {
       id: sessionId,
       send(content: string) {
+        const replay: ZoxEvent[] = [];
+        const toolHandlers: Array<(event: ZoxEvent) => void> = [];
+        const waiters: Array<() => void> = [];
+        let pump: Promise<void> | undefined;
+        let done = false;
+        let pumpError: unknown;
+
+        function notify(): void {
+          for (const waiter of waiters.splice(0)) waiter();
+        }
+
+        function isTerminal(event: ZoxEvent): boolean {
+          return (
+            event.type === "session.status" &&
+            (event.status === "idle" || event.status === "error")
+          );
+        }
+
+        function dispatchTool(event: ZoxEvent): void {
+          if (
+            event.type !== "tool.started" &&
+            event.type !== "tool.permission_required"
+          ) {
+            return;
+          }
+          for (const handler of toolHandlers) {
+            try {
+              handler(event);
+            } catch (error) {
+              console.error(error);
+            }
+          }
+        }
+
+        async function pumpEvents(): Promise<void> {
+          const eventsResPromise = fetch(
+            `${baseUrl}/sessions/${sessionId}/events`,
+            { headers: authOnly },
+          );
+          const sendRes = await fetch(
+            `${baseUrl}/sessions/${sessionId}/messages`,
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ content }),
+            },
+          );
+          if (!sendRes.ok) {
+            throw new Error(`send failed: ${sendRes.status}`);
+          }
+          const eventsRes = await eventsResPromise;
+          if (!eventsRes.ok) {
+            throw new Error(`events failed: ${eventsRes.status}`);
+          }
+          for await (const event of iterateSse(eventsRes)) {
+            replay.push(event);
+            dispatchTool(event);
+            notify();
+            if (isTerminal(event)) return;
+          }
+        }
+
+        function ensurePump(): Promise<void> {
+          pump ??= pumpEvents()
+            .catch((error: unknown) => {
+              pumpError = error;
+              throw error;
+            })
+            .finally(() => {
+              done = true;
+              notify();
+            });
+          return pump;
+        }
+
+        async function* events(): AsyncIterable<ZoxEvent> {
+          void ensurePump();
+          let index = 0;
+          while (true) {
+            while (index < replay.length) {
+              yield replay[index++]!;
+            }
+            if (pumpError) throw pumpError;
+            if (done) return;
+            await new Promise<void>((resolve) => waiters.push(resolve));
+          }
+        }
+
         return {
-          async *events(): AsyncIterable<ZoxEvent> {
-            const eventsResPromise = fetch(
-              `${baseUrl}/sessions/${sessionId}/events`,
-              { headers: authOnly },
-            );
-            const sendRes = await fetch(
-              `${baseUrl}/sessions/${sessionId}/messages`,
-              {
-                method: "POST",
-                headers,
-                body: JSON.stringify({ content }),
-              },
-            );
-            if (!sendRes.ok) {
-              throw new Error(`send failed: ${sendRes.status}`);
+          events,
+          onTool(handler: (event: ZoxEvent) => void): void {
+            toolHandlers.push(handler);
+          },
+          async waitForIdle(): Promise<void> {
+            for await (const _event of events()) {
+              /* drain until idle|error */
             }
-            const eventsRes = await eventsResPromise;
-            if (!eventsRes.ok) {
-              throw new Error(`events failed: ${eventsRes.status}`);
-            }
-            for await (const event of iterateSse(eventsRes)) {
-              yield event;
-              if (
-                event.type === "session.status" &&
-                (event.status === "idle" || event.status === "error")
+          },
+          async collectText(): Promise<string> {
+            let text = "";
+            for await (const event of events()) {
+              if (event.type === "message.delta") text += event.delta;
+              else if (
+                event.type === "message.completed" &&
+                text.length === 0
               ) {
-                return;
+                text = event.content;
               }
             }
+            return text;
           },
           async respondPermission(
             requestId: string,
@@ -157,6 +238,30 @@ export function createZoxClient(opts: { baseUrl: string; token: string }) {
         }
         const session = createSessionResponseSchema.parse(await res.json());
         return createSessionHandle(session.id);
+      },
+      async get(id: string) {
+        const res = await fetch(
+          `${baseUrl}/sessions/${encodeURIComponent(id)}`,
+          { headers: authOnly },
+        );
+        if (!res.ok) {
+          throw new Error(`get session failed: ${res.status}`);
+        }
+        const session = createSessionResponseSchema.parse(await res.json());
+        return createSessionHandle(session.id);
+      },
+      async list(workspaceRoot: string, limit = 50) {
+        const params = new URLSearchParams({
+          workspaceRoot,
+          limit: String(limit),
+        });
+        const res = await fetch(`${baseUrl}/sessions?${params}`, {
+          headers: authOnly,
+        });
+        if (!res.ok) {
+          throw new Error(`list sessions failed: ${res.status}`);
+        }
+        return sessionListResponseSchema.parse(await res.json());
       },
     },
     mcp: {

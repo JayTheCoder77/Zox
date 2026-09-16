@@ -17,18 +17,18 @@ export function assembleProviderMessages<T extends ProviderMessage>(session: {
 }): T[] {
   const assembled = assembleHistory(session);
   const prefixes: T[] = [];
-  if (session.priorStateMarkdown?.trim()) {
-    prefixes.push({
-      id: "prior-state",
-      role: "system",
-      content: session.priorStateMarkdown,
-    } as T);
-  }
   if (session.systemNotes?.length) {
     prefixes.push({
       id: "hook:notes",
       role: "system",
       content: session.systemNotes.join("\n\n"),
+    } as T);
+  }
+  if (session.priorStateMarkdown?.trim()) {
+    prefixes.push({
+      id: "prior-state",
+      role: "system",
+      content: session.priorStateMarkdown,
     } as T);
   }
   if (session.skillsCatalog?.trim()) {

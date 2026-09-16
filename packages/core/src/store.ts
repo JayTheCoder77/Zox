@@ -39,6 +39,7 @@ export type StoredSession = {
   lastTraceId?: string;
   windowWarned?: boolean;
   priorStateMarkdown?: string;
+  softPreCompactPending?: boolean;
   agent: string;
   model: string;
   status: SessionStatus;
@@ -46,16 +47,23 @@ export type StoredSession = {
   compactions?: CompactResult[];
   activeSkills?: ActiveSkill[];
   systemNotes?: string[];
+  createdAt?: number;
 };
 
 export type CreateSessionInput = CreateSessionRequest & {
   sandboxRoot?: string;
 };
 
+export type ListSessionsInput = {
+  workspaceRoot: string;
+  limit?: number;
+};
+
 export interface SessionStore {
   create(input: CreateSessionInput): StoredSession;
   get(id: string): StoredSession | undefined;
   save(session: StoredSession): void;
+  list(opts: ListSessionsInput): StoredSession[];
   addUsage(sessionId: string, rec: UsageRow): void;
   listUsage(sessionId: string): UsageRow[];
 }
@@ -72,6 +80,7 @@ export function createStoredSession(input: CreateSessionInput): StoredSession {
     model: input.model,
     status: "idle",
     messages: [],
+    createdAt: Date.now(),
   };
 }
 
@@ -91,6 +100,14 @@ export class MemorySessionStore implements SessionStore {
 
   save(session: StoredSession): void {
     this.#sessions.set(session.id, session);
+  }
+
+  list(opts: ListSessionsInput): StoredSession[] {
+    const limit = opts.limit ?? 50;
+    return [...this.#sessions.values()]
+      .filter((session) => session.workspaceRoot === opts.workspaceRoot)
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+      .slice(0, limit);
   }
 
   addUsage(sessionId: string, rec: UsageRow): void {

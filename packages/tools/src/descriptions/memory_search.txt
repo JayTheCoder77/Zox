@@ -1,0 +1,1 @@
+Search durable project memory with FTS. Pins rank above other matches.

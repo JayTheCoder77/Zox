@@ -65,7 +65,10 @@ export async function runHooks(opts: RunHooksOpts): Promise<HookOutput> {
     for (const entry of entries) {
       if (!matcherHits(entry.matcher, opts.matchValue)) continue;
       const hookStarted = performance.now();
-      const next = await runCommandHook(entry, opts.input, opts.cwd, onError);
+      const next =
+        entry.type === "http"
+          ? await runHttpHook(entry, opts.input, onError)
+          : await runCommandHook(entry, opts.input, opts.cwd, onError);
       opts.onDuration?.(opts.event, (performance.now() - hookStarted) / 1000);
       const normalized = normalizeDecision(opts.event, next);
       if (normalized.updatedInput) {
@@ -113,13 +116,56 @@ function parseEntry(entry: unknown, event: HookEvent): HookEntry {
   if (!isRecord(entry)) {
     throw new Error(`Invalid hook entry for ${event}`);
   }
-  if (entry.type !== "command" || typeof entry.command !== "string") {
-    throw new Error(`Invalid hook entry for ${event}: type must be command`);
-  }
   const matcher = typeof entry.matcher === "string" ? entry.matcher : "*";
   const timeoutMs =
     typeof entry.timeoutMs === "number" ? entry.timeoutMs : undefined;
+  if (entry.type === "http") {
+    const parsed: HookEntry = { matcher, type: "http", timeoutMs };
+    if (typeof entry.url === "string") parsed.url = entry.url;
+    const headers = parseHeaders(entry.headers);
+    if (headers) parsed.headers = headers;
+    return parsed;
+  }
+  if (entry.type !== "command" || typeof entry.command !== "string") {
+    throw new Error(`Invalid hook entry for ${event}: type must be command`);
+  }
   return { matcher, type: "command", command: entry.command, timeoutMs };
+}
+
+async function runHttpHook(
+  entry: HookEntry,
+  input: HookInput,
+  onError: "warn" | "deny",
+): Promise<HookOutput> {
+  const url = entry.url;
+  if (!url) return failHook("http hook missing url", onError);
+  const timeoutMs = entry.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const headers = new Headers(entry.headers);
+    if (!headers.has("content-type")) {
+      headers.set("content-type", "application/json");
+    }
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(input),
+      signal: controller.signal,
+    });
+    const text = await res.text();
+    const parsed = parseOutput(text);
+    if (!parsed) {
+      return failHook("hook response was not valid HookOutput JSON", onError);
+    }
+    return parsed;
+  } catch (error) {
+    const reason =
+      error instanceof Error ? error.message : "http hook request failed";
+    return failHook(reason, onError);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function runCommandHook(
@@ -128,6 +174,7 @@ async function runCommandHook(
   cwd: string,
   onError: "warn" | "deny",
 ): Promise<HookOutput> {
+  if (!entry.command) return failHook("command hook missing command", onError);
   const timeoutMs = entry.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const proc = Bun.spawn(["/bin/sh", "-c", entry.command], {
     cwd,
@@ -254,6 +301,15 @@ function matchValueFrom(input: HookInput): string {
   if (input.matcher) return input.matcher;
   if (input.tool?.name) return input.tool.name;
   return input.event;
+}
+
+function parseHeaders(value: unknown): Record<string, string> | undefined {
+  if (!isRecord(value)) return undefined;
+  const headers: Record<string, string> = {};
+  for (const [key, header] of Object.entries(value)) {
+    if (typeof header === "string") headers[key] = header;
+  }
+  return headers;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

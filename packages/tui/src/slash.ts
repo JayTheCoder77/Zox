@@ -12,6 +12,7 @@ export const SLASH_NAMES = [
   "cancel",
   "sandbox",
   "trace",
+  "remember",
   "exit",
 ] as const;
 

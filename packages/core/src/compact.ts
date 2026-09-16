@@ -5,12 +5,26 @@ import type { StoredSession } from "./store.ts";
 
 export type SessionSummarizer = (prompt: string) => Promise<string>;
 
+export function appendPriorStateMessage(
+  session: StoredSession,
+  message?: string,
+): void {
+  const trimmed = message?.trim();
+  if (!trimmed) return;
+  session.priorStateMarkdown = [session.priorStateMarkdown, trimmed]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 export async function* compactSessionTurn(opts: {
   session: StoredSession;
   summarize: SessionSummarizer;
   hooks?: HookRunner;
+  kind?: "manual" | "auto";
+  estimatedTokens?: number;
 }): AsyncIterable<ZoxEvent> {
   const { session } = opts;
+  const kind = opts.kind ?? "manual";
   session.status = "compacting";
   yield {
     type: "session.status",
@@ -24,6 +38,8 @@ export async function* compactSessionTurn(opts: {
         id: session.id,
         workspaceRoot: session.workspaceRoot,
       },
+      matcher: kind,
+      context: { estimatedTokens: opts.estimatedTokens },
     });
   }
 
@@ -46,14 +62,7 @@ export async function* compactSessionTurn(opts: {
         workspaceRoot: session.workspaceRoot,
       },
     });
-    if (compactStart.message?.trim()) {
-      session.priorStateMarkdown = [
-        session.priorStateMarkdown,
-        compactStart.message.trim(),
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-    }
+    appendPriorStateMessage(session, compactStart.message);
 
     await opts.hooks.run("PostCompact", {
       session: {
@@ -70,6 +79,7 @@ export async function* compactSessionTurn(opts: {
     toMessageId: compact.toMessageId,
   };
 
+  session.softPreCompactPending = false;
   session.status = "idle";
   yield {
     type: "session.status",
