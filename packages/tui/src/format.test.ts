@@ -28,9 +28,9 @@ describe("formatStatus", () => {
 
 describe("toolInvocationSummary", () => {
   test("bash shows command", () => {
-    expect(
-      toolInvocationSummary("bash", { command: "ls -la" }),
-    ).toContain("ls -la");
+    expect(toolInvocationSummary("bash", { command: "ls -la" })).toContain(
+      "ls -la",
+    );
   });
 
   test("read shows path", () => {

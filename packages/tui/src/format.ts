@@ -36,12 +36,8 @@ export function formatStatus(input: StatusBarInput): string {
     inputTokens,
     outputTokens,
   } = input;
-  const window =
-    contextWindow > 0 ? contextWindow : DEFAULT_CONTEXT_WINDOW;
-  const pct = Math.min(
-    999,
-    Math.round((contextEstimated / window) * 100),
-  );
+  const window = contextWindow > 0 ? contextWindow : DEFAULT_CONTEXT_WINDOW;
+  const pct = Math.min(999, Math.round((contextEstimated / window) * 100));
   const windowLabel = contextWindowKnown
     ? formatCompactTokens(window)
     : `~${formatCompactTokens(window)}`;

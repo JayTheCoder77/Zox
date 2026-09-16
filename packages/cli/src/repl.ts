@@ -1,11 +1,11 @@
 import { createInterface } from "node:readline/promises";
 import type { ZoxEvent } from "@zox/contracts";
 import type { createZoxClient } from "@zox/sdk";
+import { toolInvocationSummary } from "@zox/tui/format";
 import type { SlashContext } from "./commands.ts";
 import { executeSlash } from "./commands.ts";
 import { parseSlash } from "./parse.ts";
 import { promptPermission } from "./permission.ts";
-import { toolInvocationSummary } from "@zox/tui/format";
 
 type SessionHandle = Awaited<
   ReturnType<ReturnType<typeof createZoxClient>["sessions"]["create"]>
@@ -65,20 +65,14 @@ async function handleEvent(
     process.stdout.write(event.delta);
   }
   if (event.type === "tool.started") {
-    const summary = toolInvocationSummary(
-      event.name,
-      event.arguments ?? {},
-    );
+    const summary = toolInvocationSummary(event.name, event.arguments ?? {});
     process.stdout.write(`\n\x1b[33m${summary}\x1b[0m`);
   }
   if (event.type === "tool.completed") {
     process.stdout.write(` — ${event.ok ? "ok" : "denied"}\n`);
   }
   if (event.type === "tool.permission_required") {
-    const summary = toolInvocationSummary(
-      event.name,
-      event.arguments ?? {},
-    );
+    const summary = toolInvocationSummary(event.name, event.arguments ?? {});
     const approved = await promptPermission(summary);
     await run.respondPermission(event.requestId, { approved });
   }
