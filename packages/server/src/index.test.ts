@@ -88,4 +88,25 @@ describe("listen", () => {
     };
     expect(json.context?.overflowThreshold).toBe(0.42);
   });
+
+  test("rejects listen when observability.otlp.endpoint is not a URL", async () => {
+    const project = await mkdtemp(join(tmpdir(), "zox-listen-otlp-"));
+    await mkdir(join(project, ".zox"), { recursive: true });
+    await writeFile(
+      join(project, ".zox", "config.json"),
+      JSON.stringify({
+        observability: { otlp: { endpoint: "not-a-url" } },
+      }),
+    );
+
+    prevCwd = process.cwd();
+    process.chdir(project);
+    await expect(
+      listen({
+        port: 0,
+        token: "otlp-bad-token",
+        sandboxMode: "host",
+      }),
+    ).rejects.toThrow("Invalid OTLP endpoint: not-a-url");
+  });
 });

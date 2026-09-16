@@ -12,9 +12,11 @@ describe("getAgentProfile", () => {
       "glob",
       "ls",
       "skill",
+      "todowrite",
       "memory_search",
       "memory_write",
     ]);
+    expect(evaluatePermission(plan.ruleset, "todowrite")).toBe("allow");
     expect(evaluatePermission(plan.ruleset, "memory_search")).toBe("allow");
     expect(evaluatePermission(plan.ruleset, "memory_write")).toBe("ask");
     expect(plan.tools).not.toContain("webfetch");

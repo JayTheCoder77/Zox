@@ -37,6 +37,7 @@ const PLAN_TOOLS = [
   "glob",
   "ls",
   "skill",
+  "todowrite",
   "memory_search",
   "memory_write",
 ];

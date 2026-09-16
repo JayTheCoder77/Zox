@@ -73,7 +73,15 @@ export const zoxConfigSchema = z.object({
   providers: z.record(z.string(), providerSchema).optional(),
   observability: z
     .object({
+      enabled: z.boolean().optional(),
+      serviceName: z.string().min(1).optional(),
       recordContent: z.boolean().optional(),
+      otlp: z
+        .object({
+          endpoint: z.string().optional(),
+          headers: z.record(z.string(), z.string()).optional(),
+        })
+        .optional(),
       metrics: z
         .union([
           z.boolean(),
