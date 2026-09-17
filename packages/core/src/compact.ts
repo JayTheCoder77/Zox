@@ -53,6 +53,17 @@ export async function* compactSessionTurn(opts: {
   if (!session.compactions) session.compactions = [];
   session.compactions.push(compact);
   session.priorStateMarkdown = compact.summary;
+  const skillNames = (session.activeSkills ?? [])
+    .map((skill) => skill.name)
+    .filter(Boolean);
+  if (skillNames.length > 0) {
+    const line = `Active skills: ${skillNames.join(", ")}`;
+    if (!session.priorStateMarkdown.includes(line)) {
+      session.priorStateMarkdown = [session.priorStateMarkdown, line]
+        .filter(Boolean)
+        .join("\n\n");
+    }
+  }
 
   if (opts.hooks) {
     const compactStart = await opts.hooks.run("SessionStart", {
