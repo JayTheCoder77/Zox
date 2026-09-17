@@ -179,6 +179,8 @@ current body from disk
       priorStateMarkdown: "prior notes",
       planJson: [{ id: "1", content: "ship", status: "pending" }],
       usage: { inputTokens: 20, outputTokens: 8 },
+      turnCount: 3,
+      usageUsd: 0.42,
       messages: [
         { id: "msg_u", role: "user", content: "hello" },
         {
@@ -273,6 +275,7 @@ current body from disk
     expect(tables).toContain("schema_migrations");
     expect(tables).toContain("sessions");
     expect(tables).toContain("usage");
+    expect(tables).toContain("file_snapshots");
     expect(tables).not.toContain("embedding");
 
     const memoryColumns = db
@@ -310,7 +313,7 @@ describe("SqliteSessionStore schema_migrations", () => {
       )
       .all()
       .map((row) => row.version);
-    expect(versions).toEqual([1, 2, 3, 4]);
+    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7]);
     expect(store.db).toBeInstanceOf(Database);
   });
 });

@@ -42,6 +42,15 @@ export const webfetchTool: ZoxTool = {
     if (isBlockedHost(hostname)) {
       return toolDenied(`Blocked address: ${hostname}`, ctx.maxToolOutputChars);
     }
+    const isolated =
+      ctx.session.sandboxMode === "container" ||
+      ctx.session.sandboxMode === "remote";
+    if (isolated && (!ctx.allowedHosts || ctx.allowedHosts.length === 0)) {
+      return toolDenied(
+        `Host not allowed: ${hostname}`,
+        ctx.maxToolOutputChars,
+      );
+    }
     if (!hostOnAllowlist(hostname, ctx.allowedHosts)) {
       return toolDenied(
         `Host not allowed: ${hostname}`,

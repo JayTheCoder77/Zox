@@ -8,16 +8,55 @@ export type ToolResult = {
   denyReason?: string;
 };
 
+export type RunSubagentParent = {
+  id: string;
+  workspaceRoot: string;
+  sandboxRoot: string;
+  sandboxMode: "host" | "worktree" | "container" | "remote";
+  planJson: import("@zox/memory").PlanItem[] | null;
+  usage: { inputTokens: number; outputTokens: number };
+  model: string;
+  agent: string;
+  status: string;
+  messages: unknown[];
+  activeSkills?: { name: string; body: string; path?: string }[];
+  lastTraceId?: string;
+  windowWarned?: boolean;
+  priorStateMarkdown?: string;
+  softPreCompactPending?: boolean;
+  compactions?: unknown[];
+  systemNotes?: string[];
+  createdAt?: number;
+};
+
+export type RunSubagent = (input: {
+  parent: RunSubagentParent;
+  prompt: string;
+  agent: "build" | "plan";
+}) => Promise<{ ok: boolean; text: string }>;
+
 export type ToolContext = {
   sandboxRoot: string;
   maxToolOutputChars: number;
-  session: { id: string; workspaceRoot: string; agent: string };
+  session: {
+    id: string;
+    workspaceRoot: string;
+    agent: string;
+    sandboxMode?: "host" | "worktree" | "container" | "remote";
+  };
+  remoteExec?: import("@zox/sandbox").SandboxAdapter["exec"];
+  sandboxEnvAllowlist?: string[];
+  sandboxAllowHosts?: string[];
+  parentSession?: RunSubagentParent;
+  runSubagent?: RunSubagent;
   loadPaths?: string[];
   allowedHosts?: string[];
   webfetchMaxBytes?: number;
   fetch?: typeof globalThis.fetch;
   activateSkill?: (skill: { name: string; body: string; path: string }) => void;
   memoryDb?: import("bun:sqlite").Database;
+  onFileMutate?: (path: string) => Promise<void>;
+  afterFileMutate?: (path: string) => Promise<string | undefined>;
 };
 
 export type ZoxTool = {

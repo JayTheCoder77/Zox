@@ -16,3 +16,10 @@ export {
   loadProjectInstructions,
   PROJECT_INSTRUCTIONS_MAX_CHARS,
 } from "./project-instructions.ts";
+export {
+  DEFAULT_PROTECTED_TOOLS,
+  PRUNE_MIN_RECLAIM,
+  PRUNE_PROTECT_MIN_TOKENS,
+  type PruneOptions,
+  pruneToolBodies,
+} from "./prune.ts";

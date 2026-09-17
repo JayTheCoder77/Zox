@@ -10,3 +10,4 @@ coverage
 *.tsbuildinfo
 .worktrees
 .superpowers
+eval/results/

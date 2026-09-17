@@ -1,0 +1,4 @@
+id: echo
+prompt: ping
+expect:
+  stdoutIncludes: ping

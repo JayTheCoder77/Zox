@@ -113,6 +113,7 @@ export function createObservability(
   };
 }
 
+export { writeJsonFile } from "./json.ts";
 export { createMetrics } from "./metrics.ts";
 export {
   startSessionSpan,

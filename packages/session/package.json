@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@zox/core": "workspace:*",
+    "@zox/sandbox": "workspace:*",
     "@zox/skills": "workspace:*"
   },
   "devDependencies": {

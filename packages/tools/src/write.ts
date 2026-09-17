@@ -2,6 +2,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { jailPath } from "@zox/sandbox";
 import description from "./descriptions/write.txt" with { type: "text" };
+import { appendAfterMutate } from "./after-mutate.ts";
 import { toolContent, toolDenied, toolError, type ZoxTool } from "./types.ts";
 
 export const writeTool: ZoxTool = {
@@ -35,10 +36,16 @@ export const writeTool: ZoxTool = {
       const jailed = await jailPath(ctx.sandboxRoot, path);
       if (!jailed.ok) return toolDenied(jailed.reason, ctx.maxToolOutputChars);
 
+      await ctx.onFileMutate?.(path);
       await Bun.write(jailed.path, content);
+      const resultContent = await appendAfterMutate(
+        `Wrote ${jailed.path}`,
+        ctx,
+        jailed.path,
+      );
       return {
         ok: true,
-        ...toolContent(`Wrote ${jailed.path}`, ctx.maxToolOutputChars),
+        ...toolContent(resultContent, ctx.maxToolOutputChars),
       };
     } catch (error) {
       return toolError(

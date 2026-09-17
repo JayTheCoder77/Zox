@@ -18,6 +18,7 @@ import {
   type StoredSession,
 } from "@zox/core";
 import type { HooksFile } from "@zox/hooks";
+import { formatDiagnostics, typescriptDiagnostics } from "@zox/lsp";
 import { McpPool } from "@zox/mcp";
 import {
   autoSummarize,
@@ -32,7 +33,11 @@ import {
   ensureWorktree,
   removeWorktree,
 } from "@zox/sandbox";
-import { SqliteSessionStore } from "@zox/session";
+import {
+  recordFileSnapshot,
+  restoreSnapshot,
+  SqliteSessionStore,
+} from "@zox/session";
 import {
   activateSkill,
   deactivateSkill,
@@ -46,16 +51,36 @@ import { getConnInfo } from "hono/bun";
 import { streamSSE } from "hono/streaming";
 import { bearerAuth } from "./auth.ts";
 import { SessionEventBus } from "./bus.ts";
+import { exportSession } from "./export-session.ts";
+import { resolveCustomSlash } from "./slash-plugins.ts";
+import { sessionWebSocket } from "./ws.ts";
 
 export type AppRouter = ReturnType<typeof createProviderRouter>;
 
 export type AppConfig = {
   model?: string;
   agent?: string;
-  sandbox?: { mode: "host" | "worktree" | "container" | "remote" };
+  sandbox?: {
+    mode: "host" | "worktree" | "container" | "remote";
+    envAllowlist?: string[];
+    network?: { allowHosts?: string[] };
+  };
   providers?: Record<string, Record<string, unknown>>;
-  context?: { overflowThreshold?: number; windowTokens?: number };
-  budget?: { preCompactTokenThreshold?: number };
+  context?: {
+    overflowThreshold?: number;
+    windowTokens?: number;
+    prune?: {
+      enabled?: boolean;
+      protectMinTokens?: number;
+      minReclaim?: number;
+      protectedTools?: string[];
+    };
+  };
+  budget?: {
+    preCompactTokenThreshold?: number;
+    maxTurns?: number;
+    maxUsdPerTask?: number;
+  };
   memory?: {
     autoSummarize?: boolean;
     summarizeModel?: string;
@@ -106,7 +131,19 @@ const COMMAND_NAMES = [
   "sandbox",
   "trace",
   "remember",
+  "revert",
 ] as const;
+
+function isCommandDenied(
+  value: unknown,
+): value is { error: string; status: 400 } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { status?: unknown }).status === 400 &&
+    typeof (value as { error?: unknown }).error === "string"
+  );
+}
 
 export function createApp(opts: {
   token: string;
@@ -120,7 +157,13 @@ export function createApp(opts: {
   summarize?: SessionSummarizer;
   adapterIds?: string[];
   workspaceRoot?: string;
-}): Hono {
+  remoteExec?: import("@zox/tools").ToolContext["remoteExec"];
+}): Hono & {
+  handleWebSocket: (
+    request: Request,
+    server: Bun.Server,
+  ) => Response | undefined;
+} {
   const bus = new SessionEventBus();
   const app = new Hono();
   const tools = opts.tools ?? defaultTools();
@@ -131,6 +174,8 @@ export function createApp(opts: {
     ...opts.config,
     sandbox: {
       mode: opts.config?.sandbox?.mode ?? DEFAULT_SANDBOX_CONFIG.mode,
+      envAllowlist: opts.config?.sandbox?.envAllowlist,
+      network: opts.config?.sandbox?.network,
     },
     providers: opts.config?.providers,
     hooks: opts.config?.hooks,
@@ -215,7 +260,15 @@ export function createApp(opts: {
     return {};
   }
 
-  app.use("*", bearerAuth(opts.token));
+  const auth = bearerAuth(opts.token);
+  app.use("*", async (c, next) => {
+    const path = new URL(c.req.url).pathname;
+    if (c.req.method === "GET" && /^\/sessions\/[^/]+\/ws$/.test(path)) {
+      await next();
+      return;
+    }
+    return auth(c, next);
+  });
 
   app.post("/sessions", async (c) => {
     let json: unknown;
@@ -334,6 +387,29 @@ export function createApp(opts: {
     });
   });
 
+  app.get("/sessions/:id/export", async (c) => {
+    const session = opts.store.get(c.req.param("id"));
+    if (!session) return c.json({ error: "Not found" }, 404);
+    const includeMemory = c.req.query("includeMemory") === "true";
+    const json = await exportSession({
+      session,
+      includeMemory,
+      readMemory: async () => {
+        const db = sqliteDatabase(opts.store);
+        if (!db) return [];
+        return db
+          .query<{ content: string }, [string]>(
+            `SELECT content FROM memories
+             WHERE workspace_root = ?
+             ORDER BY pinned DESC, updated_at DESC`,
+          )
+          .all(session.workspaceRoot)
+          .map((row) => row.content);
+      },
+    });
+    return c.json(json);
+  });
+
   app.post("/sessions/:id/messages", async (c) => {
     const session = opts.store.get(c.req.param("id"));
     if (!session) return c.json({ error: "Not found" }, 404);
@@ -408,14 +484,7 @@ export function createApp(opts: {
       "approved" in json &&
       (json as { approved: unknown }).approved === true;
     const requestId = c.req.param("requestId");
-    const waiter = permissionWaiters.get(requestId);
-    if (waiter) {
-      waiter.resolve(approved);
-      permissionWaiters.delete(requestId);
-    } else {
-      permissionDecisions.set(requestId, approved);
-    }
-    sessionPermissionIds.get(session.id)?.delete(requestId);
+    applyPermission(session.id, requestId, approved);
     return c.json({ ok: true, approved });
   });
 
@@ -433,6 +502,44 @@ export function createApp(opts: {
       );
     }
     return c.json({ ok: true });
+  });
+
+  app.post("/sessions/:id/revert", async (c) => {
+    const session = opts.store.get(c.req.param("id"));
+    if (!session) return c.json({ error: "Not found" }, 404);
+    const db = sqliteDatabase(opts.store);
+    if (!db) return c.json({ error: "Not found" }, 404);
+    let json: unknown = {};
+    try {
+      json = await c.req.json();
+    } catch {
+      json = {};
+    }
+    const snapshotId =
+      typeof json === "object" &&
+      json !== null &&
+      typeof (json as { snapshotId?: unknown }).snapshotId === "string"
+        ? (json as { snapshotId: string }).snapshotId
+        : undefined;
+    try {
+      const result = await restoreSnapshot({
+        db,
+        sessionId: session.id,
+        snapshotId,
+        sandboxRoot: session.sandboxRoot,
+      });
+      return c.json(result);
+    } catch (error) {
+      if (error instanceof Error && error.message === "Snapshot not found") {
+        return c.json({ error: "Not found" }, 404);
+      }
+      return c.json(
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        400,
+      );
+    }
   });
 
   app.post("/sessions/:id/commands", async (c) => {
@@ -461,6 +568,9 @@ export function createApp(opts: {
       return c.json({ error: "/exit is client-only" }, 400);
     }
     const result = await dispatchCommand(session, name, args);
+    if (isCommandDenied(result)) {
+      return c.json({ error: result.error }, 400);
+    }
     return c.json(result);
   });
 
@@ -740,6 +850,20 @@ export function createApp(opts: {
     }
   });
 
+  app.get("/sessions/:id/ws", (c) => {
+    const url = new URL(c.req.url);
+    const header = c.req.header("Authorization") ?? "";
+    const provided = header.startsWith("Bearer ")
+      ? header.slice("Bearer ".length)
+      : (url.searchParams.get("token") ?? undefined);
+    if (provided !== opts.token) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const session = opts.store.get(c.req.param("id"));
+    if (!session) return c.json({ error: "Not found" }, 404);
+    return c.json({ error: "Upgrade required" }, 426);
+  });
+
   // Phase 0: close SSE after session.status idle|error so app.request tests finish.
   app.get("/sessions/:id/events", (c) => {
     const session = opts.store.get(c.req.param("id"));
@@ -788,7 +912,32 @@ export function createApp(opts: {
     });
   });
 
-  return app;
+  const handleWebSocket = sessionWebSocket({
+    token: opts.token,
+    getSession: (id) => {
+      const session = opts.store.get(id);
+      return session ? { id: session.id } : undefined;
+    },
+    bus,
+    respondPermission: applyPermission,
+  });
+
+  return Object.assign(app, { handleWebSocket });
+
+  function applyPermission(
+    sessionId: string,
+    requestId: string,
+    approved: boolean,
+  ): void {
+    const waiter = permissionWaiters.get(requestId);
+    if (waiter) {
+      waiter.resolve(approved);
+      permissionWaiters.delete(requestId);
+    } else {
+      permissionDecisions.set(requestId, approved);
+    }
+    sessionPermissionIds.get(sessionId)?.delete(requestId);
+  }
 
   async function runSessionTurn(
     session: StoredSession,
@@ -832,12 +981,19 @@ export function createApp(opts: {
         windowTokens: config.context?.windowTokens,
       },
       overflowThreshold: config.context?.overflowThreshold,
+      prune: {
+        ...config.context?.prune,
+        enabled: config.context?.prune?.enabled ?? false,
+      },
       onOverflow: ({ kind, estimatedTokens }) =>
         runOverflowCompact(session, kind, estimatedTokens),
       observability: opts.observability,
       skillLoadPaths: config.skills?.loadPaths,
       webfetchAllowedHosts: config.tools?.webfetch?.allowedHosts,
       webfetchMaxBytes: config.tools?.webfetch?.maxBytes,
+      remoteExec: opts.remoteExec,
+      sandboxEnvAllowlist: config.sandbox?.envAllowlist,
+      sandboxAllowHosts: config.sandbox?.network?.allowHosts,
       memoryDb: sqliteDatabase(opts.store),
       skillsConfig: {
         catalog: config.skills?.catalog,
@@ -846,6 +1002,18 @@ export function createApp(opts: {
       },
       instructionFiles: config.instructions?.files,
       preCompactTokenThreshold: config.budget?.preCompactTokenThreshold,
+      maxTurns: config.budget?.maxTurns,
+      maxUsdPerTask: config.budget?.maxUsdPerTask,
+      onFileMutate: snapshotMutator(session, opts.store),
+      afterFileMutate: async (filePath) => {
+        const formatted = formatDiagnostics(
+          await typescriptDiagnostics({
+            sandboxRoot: session.sandboxRoot,
+            filePath,
+          }),
+        );
+        return formatted || undefined;
+      },
     })) {
       if (event.type === "usage.turn") {
         processUsage.inputTokens += event.inputTokens;
@@ -1018,9 +1186,60 @@ export function createApp(opts: {
         });
         return { ok: true, id: row.id, pinned: true };
       }
+      case "revert": {
+        const db = sqliteDatabase(opts.store);
+        if (!db) return { error: "Snapshots require sqlite store" };
+        try {
+          return await restoreSnapshot({
+            db,
+            sessionId: session.id,
+            snapshotId: args[0],
+            sandboxRoot: session.sandboxRoot,
+          });
+        } catch (error) {
+          return {
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
       default:
-        return { error: `Unknown command: ${name}` };
+        return dispatchPluginCommand(session, name, args);
     }
+  }
+
+  async function dispatchPluginCommand(
+    session: StoredSession,
+    name: string,
+    args: string[],
+  ): Promise<unknown> {
+    const plugin = await resolveCustomSlash({
+      workspaceRoot: session.workspaceRoot,
+      name,
+      args,
+    });
+    if (plugin.kind === "prompt") {
+      if (opts.hooks) {
+        const expansion = await opts.hooks.run("UserPromptExpansion", {
+          prompt: plugin.content,
+          matcher: name,
+          session: {
+            id: session.id,
+            workspaceRoot: session.workspaceRoot,
+          },
+        });
+        if (expansion.decision === "deny") {
+          return {
+            error: expansion.reason ?? expansion.message ?? "Denied",
+            status: 400 as const,
+          };
+        }
+      }
+      return { type: "expand", content: plugin.content };
+    }
+    if (plugin.kind === "json") {
+      return plugin.value;
+    }
+    return { error: `Unknown command: ${name}` };
   }
 
   async function dispatchMcp(args: string[]): Promise<unknown> {
@@ -1133,6 +1352,22 @@ function defaultTools(): ToolRegistry {
 function sqliteDatabase(store: SessionStore) {
   if (store instanceof SqliteSessionStore) return store.db;
   return undefined;
+}
+
+function snapshotMutator(
+  session: StoredSession,
+  store: SessionStore,
+): ((path: string) => Promise<void>) | undefined {
+  const db = sqliteDatabase(store);
+  if (!db) return undefined;
+  return async (path: string) => {
+    await recordFileSnapshot({
+      db,
+      sessionId: session.id,
+      sandboxRoot: session.sandboxRoot,
+      relativePath: path,
+    });
+  };
 }
 
 function sessionPayload(session: StoredSession) {

@@ -1,0 +1,1 @@
+Search workspace source with BM25/FTS. Use for symbols and phrases. Optional limit (default 8).

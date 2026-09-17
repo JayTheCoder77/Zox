@@ -36,6 +36,7 @@ describe("parseSlash", () => {
       "sandbox",
       "trace",
       "remember",
+      "revert",
       "exit",
     ] as const;
     for (const name of mvpCommands) {
@@ -55,6 +56,14 @@ describe("parseArgs", () => {
         model: "mock/echo",
       },
     });
+  });
+
+  test("parses --sandbox container and remote", () => {
+    expect(parseArgs(["--sandbox", "container"]).flags.sandbox).toBe(
+      "container",
+    );
+    expect(parseArgs(["--sandbox", "remote"]).flags.sandbox).toBe("remote");
+    expect(parseArgs(["--sandbox", "worktree"]).flags.sandbox).toBe("worktree");
   });
 
   test("collects positionals after flags", () => {
@@ -81,5 +90,51 @@ describe("parseArgs", () => {
         agent: "plan",
       },
     });
+  });
+
+  test("parses export session positionals and --include-memory", () => {
+    const parsed = parseArgs(["agent", "run", "/tmp/repo", "fix the bug"]);
+    expect(parsed.positionals).toEqual([
+      "agent",
+      "run",
+      "/tmp/repo",
+      "fix the bug",
+    ]);
+  });
+
+  test("parseArgs agent run flags", () => {
+    expect(
+      parseArgs([
+        "agent",
+        "run",
+        "/tmp/repo",
+        "task",
+        "--max-turns",
+        "3",
+        "--keep-worktree",
+        "--auto-approve",
+      ]).flags,
+    ).toMatchObject({
+      maxTurns: 3,
+      keepWorktree: true,
+      autoApprove: true,
+    });
+  });
+
+  test("parseArgs legacy", () => {
+    const parsed = parseArgs([
+      "export",
+      "session",
+      "sess_abc",
+      "--include-memory",
+      "--url",
+      "http://127.0.0.1:8787",
+      "--token",
+      "tok",
+    ]);
+    expect(parsed.positionals).toEqual(["export", "session", "sess_abc"]);
+    expect(parsed.flags.includeMemory).toBe(true);
+    expect(parsed.flags.url).toBe("http://127.0.0.1:8787");
+    expect(parsed.flags.token).toBe("tok");
   });
 });

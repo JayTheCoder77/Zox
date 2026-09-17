@@ -47,6 +47,11 @@ export const bashTool: ZoxTool = {
       config: {
         ...DEFAULT_SANDBOX_CONFIG,
         root: ctx.sandboxRoot,
+        mode: ctx.session.sandboxMode ?? DEFAULT_SANDBOX_CONFIG.mode,
+        envAllowlist: ctx.sandboxEnvAllowlist,
+        network: ctx.sandboxAllowHosts
+          ? { allowHosts: ctx.sandboxAllowHosts }
+          : undefined,
         maxToolOutputChars: ctx.maxToolOutputChars,
         denylist: {
           ...DEFAULT_SANDBOX_CONFIG.denylist,
@@ -54,6 +59,7 @@ export const bashTool: ZoxTool = {
         },
       },
       shell: true,
+      remoteExec: ctx.remoteExec,
     });
 
     if (result.denied) {

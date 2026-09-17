@@ -56,6 +56,11 @@ describe("openapi stub", () => {
     expect(yaml).toContain("SessionListResponse");
   });
 
+  test("includes GET /sessions/{id}/export", () => {
+    expect(yaml).toContain("/sessions/{id}/export:");
+    expect(yaml).toContain("includeMemory");
+  });
+
   test("uses Bearer auth", () => {
     expect(yaml).toContain("bearerAuth:");
     expect(yaml).toContain("Bearer");

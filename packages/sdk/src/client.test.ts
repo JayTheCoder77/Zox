@@ -393,4 +393,31 @@ describe("createZoxClient", () => {
       server.stop(true);
     }
   });
+
+  test("session.export returns version 1 JSON without memory by default", async () => {
+    const token = "sdk-token";
+    const hono = testApp({ token });
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: hono.fetch,
+    });
+    try {
+      const client = createZoxClient({
+        baseUrl: `http://127.0.0.1:${server.port}`,
+        token,
+      });
+      const session = await client.sessions.create({
+        workspaceRoot: "/tmp/ws",
+      });
+      await session.send("ping").waitForIdle();
+      const exported = await session.export();
+      expect(exported.version).toBe(1);
+      expect(exported.session.id).toBe(session.id);
+      expect(exported.memory).toBeUndefined();
+      expect(JSON.stringify(exported)).not.toContain("sk-123456789");
+    } finally {
+      server.stop(true);
+    }
+  });
 });

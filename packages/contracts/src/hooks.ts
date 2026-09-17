@@ -10,6 +10,13 @@ export const hookEventSchema = z.enum([
   "Stop",
   "SessionEnd",
   "InstructionsLoaded",
+  "PermissionRequest",
+  "PermissionDenied",
+  "PostToolUseFailure",
+  "PostToolBatch",
+  "UserPromptExpansion",
+  "SubagentStart",
+  "SubagentStop",
 ]);
 
 export const hookInputSchema = z.object({

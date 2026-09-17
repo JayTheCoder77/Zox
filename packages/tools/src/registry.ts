@@ -18,4 +18,12 @@ export class ToolRegistry {
   list(): ZoxTool[] {
     return [...this.#tools.values()];
   }
+
+  without(name: string): ToolRegistry {
+    const copy = new ToolRegistry();
+    for (const tool of this.list()) {
+      if (tool.name !== name) copy.register(tool);
+    }
+    return copy;
+  }
 }

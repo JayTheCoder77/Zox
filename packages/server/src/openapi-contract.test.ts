@@ -88,6 +88,7 @@ describe("openapi contract", () => {
       { method: "GET", path: "/skills" },
       { method: "GET", path: "/sessions/:id/skills" },
       { method: "POST", path: "/sessions/:id/skills" },
+      { method: "GET", path: "/sessions/:id/export" },
     ];
     for (const route of remainder) {
       expect(routes).toContainEqual(route);

@@ -107,6 +107,93 @@ describe("runSandboxed", () => {
     expect(result.timedOut).toBe(true);
     expect(await fileExists(marker)).toBe(false);
   });
+
+  test("jails cwd before container adapter and does not jail remote", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-sub-root-"));
+    const outside = await mkdtemp(join(tmpdir(), "zox-sub-outside-"));
+    const argvSeen: string[][] = [];
+    const containerDenied = await runSandboxed({
+      argv: ["echo", "hello"],
+      cwd: outside,
+      config: { ...DEFAULT_SANDBOX_CONFIG, root, mode: "container" },
+      spawn: ((cmd: string[]) => {
+        argvSeen.push(cmd);
+        return {
+          pid: 1,
+          exited: Promise.resolve(0),
+          stdout: new Response("").body,
+          stderr: new Response("").body,
+          kill() {},
+        };
+      }) as never,
+    });
+    expect(containerDenied.denied).toBe(true);
+    expect(containerDenied.denyReason).toMatch(/jail/i);
+    expect(argvSeen).toEqual([]);
+
+    const remote = await runSandboxed({
+      argv: ["echo", "hello"],
+      cwd: outside,
+      config: { ...DEFAULT_SANDBOX_CONFIG, root, mode: "remote" },
+      remoteExec: async () => ({
+        ok: true,
+        exitCode: 0,
+        stdout: "remote-ok",
+        stderr: "",
+        truncated: false,
+        timedOut: false,
+        denied: false,
+        durationMs: 1,
+      }),
+    });
+    expect(remote.denied).toBe(false);
+    expect(remote.stdout).toBe("remote-ok");
+  });
+
+  test("container spawn includes allowlisted PATH when opts.env is empty", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-sub-"));
+    const previousPath = globalThis.process.env.PATH;
+    globalThis.process.env.PATH = previousPath || "/usr/bin";
+    const argvSeen: string[][] = [];
+    try {
+      await runSandboxed({
+        argv: ["echo", "hello"],
+        cwd: root,
+        env: {},
+        config: { ...DEFAULT_SANDBOX_CONFIG, root, mode: "container" },
+        spawn: ((cmd: string[]) => {
+          argvSeen.push(cmd);
+          return {
+            pid: 1,
+            exited: Promise.resolve(0),
+            stdout: new Response("").body,
+            stderr: new Response("").body,
+            kill() {},
+          };
+        }) as never,
+      });
+    } finally {
+      if (previousPath === undefined) {
+        delete globalThis.process.env.PATH;
+      } else {
+        globalThis.process.env.PATH = previousPath;
+      }
+    }
+    const joined = (argvSeen[0] ?? []).join(" ");
+    expect(joined).toContain("-e PATH=");
+  });
+
+  test("remote without injected exec is denied", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-sub-"));
+    const result = await runSandboxed({
+      argv: ["echo", "hello"],
+      cwd: root,
+      config: { ...DEFAULT_SANDBOX_CONFIG, root, mode: "remote" },
+    });
+    expect(result.denied).toBe(true);
+    expect(result.denyReason).toBe("remote adapter not configured");
+    expect(result.exitCode).toBe(-100);
+  });
 });
 
 async function fileExists(path: string): Promise<boolean> {

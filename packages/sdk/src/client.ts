@@ -1,5 +1,6 @@
 import {
   createSessionResponseSchema,
+  sessionExportSchema,
   sessionListResponseSchema,
   sessionSkillsResponseSchema,
   workspaceSkillsResponseSchema,
@@ -7,13 +8,37 @@ import {
 } from "@zox/contracts";
 import { iterateSse } from "./sse.ts";
 
-export function createZoxClient(opts: { baseUrl: string; token: string }) {
+export function createZoxClient(opts: {
+  baseUrl: string;
+  token: string;
+  /** SSE is the default; TUI may keep SSE. `ws` unblocks clients that cannot POST while reading SSE. */
+  transport?: "sse" | "ws";
+}) {
   const baseUrl = opts.baseUrl.replace(/\/$/, "");
+  const transport = opts.transport ?? "sse";
   const headers = {
     Authorization: `Bearer ${opts.token}`,
     "Content-Type": "application/json",
   };
   const authOnly = { Authorization: headers.Authorization };
+
+  async function connectEvents(sessionId: string): Promise<WebSocket> {
+    const url = new URL(`${baseUrl}/sessions/${sessionId}/ws`);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    url.searchParams.set("token", opts.token);
+    const ws = new WebSocket(url, {
+      headers: { Authorization: `Bearer ${opts.token}` },
+    });
+    await new Promise<void>((resolve, reject) => {
+      ws.addEventListener("open", () => resolve(), { once: true });
+      ws.addEventListener(
+        "error",
+        () => reject(new Error("connectEvents failed")),
+        { once: true },
+      );
+    });
+    return ws;
+  }
 
   function createSessionHandle(sessionId: string) {
     return {
@@ -25,6 +50,7 @@ export function createZoxClient(opts: { baseUrl: string; token: string }) {
         let pump: Promise<void> | undefined;
         let done = false;
         let pumpError: unknown;
+        let eventWs: WebSocket | undefined;
 
         function notify(): void {
           for (const waiter of waiters.splice(0)) waiter();
@@ -54,6 +80,49 @@ export function createZoxClient(opts: { baseUrl: string; token: string }) {
         }
 
         async function pumpEvents(): Promise<void> {
+          if (transport === "ws") {
+            eventWs = await connectEvents(sessionId);
+            const ws = eventWs;
+            const sendRes = await fetch(
+              `${baseUrl}/sessions/${sessionId}/messages`,
+              {
+                method: "POST",
+                headers,
+                body: JSON.stringify({ content }),
+              },
+            );
+            if (!sendRes.ok) {
+              ws.close();
+              throw new Error(`send failed: ${sendRes.status}`);
+            }
+            await new Promise<void>((resolve, reject) => {
+              ws.addEventListener("message", (event) => {
+                const parsed = JSON.parse(String(event.data)) as ZoxEvent;
+                replay.push(parsed);
+                dispatchTool(parsed);
+                notify();
+                if (isTerminal(parsed)) {
+                  ws.close();
+                  resolve();
+                }
+              });
+              ws.addEventListener(
+                "error",
+                () => reject(new Error("events failed: ws")),
+                { once: true },
+              );
+              ws.addEventListener(
+                "close",
+                () => {
+                  done = true;
+                  notify();
+                  resolve();
+                },
+                { once: true },
+              );
+            });
+            return;
+          }
           const eventsResPromise = fetch(
             `${baseUrl}/sessions/${sessionId}/events`,
             { headers: authOnly },
@@ -134,6 +203,20 @@ export function createZoxClient(opts: { baseUrl: string; token: string }) {
             requestId: string,
             decision: { approved: boolean },
           ): Promise<void> {
+            if (
+              transport === "ws" &&
+              eventWs &&
+              eventWs.readyState === WebSocket.OPEN
+            ) {
+              eventWs.send(
+                JSON.stringify({
+                  type: "permission.response",
+                  requestId,
+                  approved: decision.approved,
+                }),
+              );
+              return;
+            }
             const res = await fetch(
               `${baseUrl}/sessions/${sessionId}/permissions/${requestId}`,
               {
@@ -175,6 +258,19 @@ export function createZoxClient(opts: { baseUrl: string; token: string }) {
         }
         return res.json();
       },
+      async export(opts?: { includeMemory?: boolean }) {
+        const params = opts?.includeMemory
+          ? "?includeMemory=true"
+          : "";
+        const res = await fetch(
+          `${baseUrl}/sessions/${sessionId}/export${params}`,
+          { headers: authOnly },
+        );
+        if (!res.ok) {
+          throw new Error(`export failed: ${res.status}`);
+        }
+        return sessionExportSchema.parse(await res.json());
+      },
       async compact(): Promise<void> {
         const res = await fetch(`${baseUrl}/sessions/${sessionId}/compact`, {
           method: "POST",
@@ -183,6 +279,22 @@ export function createZoxClient(opts: { baseUrl: string; token: string }) {
         if (!res.ok) {
           throw new Error(`compact failed: ${res.status}`);
         }
+      },
+      async revert(snapshotId?: string): Promise<{
+        path: string;
+        snapshotId: string;
+      }> {
+        const res = await fetch(`${baseUrl}/sessions/${sessionId}/revert`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(
+            snapshotId === undefined ? {} : { snapshotId },
+          ),
+        });
+        if (!res.ok) {
+          throw new Error(`revert failed: ${res.status}`);
+        }
+        return res.json() as Promise<{ path: string; snapshotId: string }>;
       },
       async close(): Promise<void> {
         const res = await fetch(`${baseUrl}/sessions/${sessionId}/close`, {
@@ -222,6 +334,7 @@ export function createZoxClient(opts: { baseUrl: string; token: string }) {
   }
 
   return {
+    connectEvents,
     sessions: {
       async create(input: {
         workspaceRoot: string;

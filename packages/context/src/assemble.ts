@@ -1,4 +1,5 @@
 import type { CompactResult } from "./compact.ts";
+import { type PruneOptions, pruneToolBodies } from "./prune.ts";
 
 export type ProviderMessage = {
   id: string;
@@ -18,8 +19,12 @@ export function assembleProviderMessages<T extends ProviderMessage>(session: {
   skillBodies?: string[];
   priorStateMarkdown?: string;
   systemNotes?: string[];
+  prune?: PruneOptions;
 }): T[] {
-  const assembled = assembleHistory(session);
+  const assembled = pruneToolBodies(
+    assembleHistory(session),
+    session.prune ?? { enabled: false },
+  );
   const prefixes: T[] = [];
   pushSystem(prefixes, "prompt:family", session.familyPrompt);
   pushSystem(prefixes, "prompt:agent", session.agentOverlay);

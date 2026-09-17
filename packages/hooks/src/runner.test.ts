@@ -3,7 +3,7 @@ import { chmod, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadHooksFile, runHooks } from "./runner.ts";
-import type { HookInput, HooksFile } from "./types.ts";
+import { HOOK_EVENTS, type HookInput, type HooksFile } from "./types.ts";
 
 async function writeScript(body: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "zox-hook-script-"));
@@ -160,6 +160,114 @@ describe("runHooks", () => {
       });
       expect(result.decision).toBe("allow");
     }
+  });
+
+  test("runs PermissionRequest and cannot deny", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "zox-hook-perm-deny-"));
+    const denyScript = join(dir, "deny.sh");
+    await Bun.write(denyScript, `#!/bin/sh\nprintf '{"decision":"deny"}\\n'\n`);
+    await chmod(denyScript, 0o755);
+
+    const result = await runHooks({
+      files: [
+        {
+          zoxHooksVersion: 1,
+          hooks: {
+            PermissionRequest: [
+              {
+                matcher: "bash",
+                type: "command",
+                command: denyScript,
+              },
+            ],
+          },
+        },
+      ],
+      event: "PermissionRequest",
+      input: input({ event: "PermissionRequest" }),
+      matchValue: "bash",
+      trusted: true,
+      cwd: process.cwd(),
+    });
+    expect(result.decision).toBe("allow");
+  });
+
+  test("PostToolUseFailure cannot deny", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "zox-hook-fail-deny-"));
+    const denyScript = join(dir, "deny.sh");
+    await Bun.write(denyScript, `#!/bin/sh\nprintf '{"decision":"deny"}\\n'\n`);
+    await chmod(denyScript, 0o755);
+
+    const result = await runHooks({
+      files: [
+        {
+          zoxHooksVersion: 1,
+          hooks: {
+            PostToolUseFailure: [
+              {
+                matcher: "bash",
+                type: "command",
+                command: denyScript,
+              },
+            ],
+          },
+        },
+      ],
+      event: "PostToolUseFailure",
+      input: input({ event: "PostToolUseFailure" }),
+      matchValue: "bash",
+      trusted: true,
+      cwd: process.cwd(),
+    });
+    expect(result.decision).toBe("allow");
+  });
+
+  test("UserPromptExpansion can deny", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "zox-hook-expand-deny-"));
+    const denyScript = join(dir, "deny.sh");
+    await Bun.write(denyScript, `#!/bin/sh\nprintf '{"decision":"deny"}\\n'\n`);
+    await chmod(denyScript, 0o755);
+
+    const result = await runHooks({
+      files: [
+        {
+          zoxHooksVersion: 1,
+          hooks: {
+            UserPromptExpansion: [
+              {
+                matcher: "*",
+                type: "command",
+                command: denyScript,
+              },
+            ],
+          },
+        },
+      ],
+      event: "UserPromptExpansion",
+      input: input({
+        event: "UserPromptExpansion",
+        tool: undefined,
+        prompt: "/explain",
+      }),
+      matchValue: "*",
+      trusted: true,
+      cwd: process.cwd(),
+    });
+    expect(result.decision).toBe("deny");
+  });
+
+  test("HOOK_EVENTS includes the seven new names", () => {
+    expect(HOOK_EVENTS).toEqual(
+      expect.arrayContaining([
+        "PermissionRequest",
+        "PermissionDenied",
+        "PostToolUseFailure",
+        "PostToolBatch",
+        "UserPromptExpansion",
+        "SubagentStart",
+        "SubagentStop",
+      ]),
+    );
   });
 
   test("non-matching matcher does not run the command", async () => {

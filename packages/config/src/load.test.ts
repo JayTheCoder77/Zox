@@ -37,6 +37,14 @@ describe("resolveConfigEnv", () => {
 });
 
 describe("zoxConfigSchema", () => {
+  test("parses budget maxTurns and maxUsdPerTask", () => {
+    const parsed = zoxConfigSchema.parse({
+      budget: { maxTurns: 50, maxUsdPerTask: 1.5 },
+    });
+    expect(parsed.budget?.maxTurns).toBe(50);
+    expect(parsed.budget?.maxUsdPerTask).toBe(1.5);
+  });
+
   test("parses Phase 1.5 context, budget, memory, and webfetch fields", () => {
     const parsed = zoxConfigSchema.parse({
       context: { overflowThreshold: 0.9 },
@@ -52,6 +60,44 @@ describe("zoxConfigSchema", () => {
     });
     expect(parsed.budget?.preCompactTokenThreshold).toBe(120000);
     expect(parsed.tools?.webfetch?.allowedHosts).toEqual(["example.com"]);
+  });
+
+  test("parses context.prune fields", () => {
+    const parsed = zoxConfigSchema.parse({
+      context: {
+        overflowThreshold: 0.85,
+        prune: {
+          enabled: true,
+          protectMinTokens: 1000,
+          minReclaim: 500,
+          protectedTools: ["skill", "webfetch"],
+        },
+      },
+    });
+    expect(parsed.context?.prune?.enabled).toBe(true);
+    expect(parsed.context?.prune?.protectedTools).toEqual([
+      "skill",
+      "webfetch",
+    ]);
+  });
+
+  test("parses sandbox envAllowlist and network.allowHosts", () => {
+    const parsed = zoxConfigSchema.parse({
+      sandbox: {
+        mode: "container",
+        envAllowlist: ["PATH", "LANG"],
+        network: { allowHosts: ["example.com"] },
+      },
+    });
+    expect(parsed.sandbox?.envAllowlist).toEqual(["PATH", "LANG"]);
+    expect(parsed.sandbox?.network?.allowHosts).toEqual(["example.com"]);
+  });
+
+  test("parses unused index.embeddings.apiKeyEnv", () => {
+    const parsed = zoxConfigSchema.parse({
+      index: { embeddings: { apiKeyEnv: "OPENAI_API_KEY" } },
+    });
+    expect(parsed.index?.embeddings?.apiKeyEnv).toBe("OPENAI_API_KEY");
   });
 
   test("parses instructions.files", () => {

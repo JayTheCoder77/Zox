@@ -32,6 +32,15 @@ describe("zoxEventSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  test("parses budget.exceeded", () => {
+    const event = zoxEventSchema.parse({
+      type: "budget.exceeded",
+      sessionId: "sess_1",
+      reason: "max_turns",
+    });
+    expect(event).toMatchObject({ type: "budget.exceeded", reason: "max_turns" });
+  });
+
   test("parses skills.changed", () => {
     const event = zoxEventSchema.parse({
       type: "skills.changed",

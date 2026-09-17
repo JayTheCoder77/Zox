@@ -1,0 +1,1 @@
+Launch a subagent with a prompt. Use for isolated investigation. agent is plan (default) or build.

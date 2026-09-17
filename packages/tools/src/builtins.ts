@@ -1,4 +1,5 @@
 import { bashTool } from "./bash.ts";
+import { codeSearchTool } from "./code_search.ts";
 import { editTool } from "./edit.ts";
 import { globTool } from "./glob.ts";
 import { grepTool } from "./grep.ts";
@@ -7,6 +8,7 @@ import { memorySearchTool } from "./memory_search.ts";
 import { memoryWriteTool } from "./memory_write.ts";
 import { readTool } from "./read.ts";
 import { skillTool } from "./skill.ts";
+import { taskTool } from "./task.ts";
 import { todowriteTool } from "./todowrite.ts";
 import type { ZoxTool } from "./types.ts";
 import { webfetchTool } from "./webfetch.ts";
@@ -26,5 +28,7 @@ export function createBuiltinTools(): ZoxTool[] {
     webfetchTool,
     memorySearchTool,
     memoryWriteTool,
+    codeSearchTool,
+    taskTool,
   ];
 }

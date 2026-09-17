@@ -36,6 +36,8 @@ export type StoredSession = {
   sandboxMode: "host" | "worktree" | "container" | "remote";
   planJson: PlanItem[] | null;
   usage: { inputTokens: number; outputTokens: number };
+  turnCount?: number;
+  usageUsd?: number;
   lastTraceId?: string;
   windowWarned?: boolean;
   priorStateMarkdown?: string;
@@ -76,6 +78,8 @@ export function createStoredSession(input: CreateSessionInput): StoredSession {
     sandboxMode: "worktree",
     planJson: null,
     usage: { inputTokens: 0, outputTokens: 0 },
+    turnCount: 0,
+    usageUsd: 0,
     agent: input.agent,
     model: input.model,
     status: "idle",
