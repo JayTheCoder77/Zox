@@ -5,6 +5,7 @@ import {
   buildEnvironmentPrompt,
   estimateSession,
   loadProjectInstructions,
+  type PruneOptions,
   selectFamilyPrompt,
 } from "@zox/context";
 import type { ZoxEvent } from "@zox/contracts";
@@ -83,6 +84,7 @@ export async function* runTurn(opts: {
   hooks?: HookRunner;
   context?: ContextEngine;
   overflowThreshold?: number;
+  prune?: PruneOptions;
   onOverflow?: (info: {
     kind: "auto";
     estimatedTokens: number;
@@ -91,10 +93,17 @@ export async function* runTurn(opts: {
   skillLoadPaths?: string[];
   webfetchAllowedHosts?: string[];
   webfetchMaxBytes?: number;
+  remoteExec?: import("@zox/tools").ToolContext["remoteExec"];
+  sandboxEnvAllowlist?: string[];
+  sandboxAllowHosts?: string[];
   memoryDb?: import("bun:sqlite").Database;
   skillsConfig?: CatalogOptions;
   instructionFiles?: string[];
   preCompactTokenThreshold?: number;
+  maxTurns?: number;
+  maxUsdPerTask?: number;
+  onFileMutate?: (path: string) => Promise<void>;
+  afterFileMutate?: (path: string) => Promise<string | undefined>;
   ids?: {
     messageId(): string;
     turnId(): string;
@@ -126,6 +135,7 @@ async function* runTurnBody(opts: {
   hooks?: HookRunner;
   context?: ContextEngine;
   overflowThreshold?: number;
+  prune?: PruneOptions;
   onOverflow?: (info: {
     kind: "auto";
     estimatedTokens: number;
@@ -134,10 +144,17 @@ async function* runTurnBody(opts: {
   skillLoadPaths?: string[];
   webfetchAllowedHosts?: string[];
   webfetchMaxBytes?: number;
+  remoteExec?: import("@zox/tools").ToolContext["remoteExec"];
+  sandboxEnvAllowlist?: string[];
+  sandboxAllowHosts?: string[];
   memoryDb?: import("bun:sqlite").Database;
   skillsConfig?: CatalogOptions;
   instructionFiles?: string[];
   preCompactTokenThreshold?: number;
+  maxTurns?: number;
+  maxUsdPerTask?: number;
+  onFileMutate?: (path: string) => Promise<void>;
+  afterFileMutate?: (path: string) => Promise<string | undefined>;
   ids?: {
     messageId(): string;
     turnId(): string;
@@ -145,6 +162,39 @@ async function* runTurnBody(opts: {
     requestId(): string;
   };
 }): AsyncIterable<ZoxEvent> {
+  opts.session.turnCount = (opts.session.turnCount ?? 0) + 1;
+  if (opts.maxTurns !== undefined && opts.session.turnCount > opts.maxTurns) {
+    yield {
+      type: "budget.exceeded",
+      sessionId: opts.session.id,
+      reason: "max_turns",
+    };
+    opts.session.status = "idle";
+    yield {
+      type: "session.status",
+      sessionId: opts.session.id,
+      status: "idle",
+    };
+    return;
+  }
+  if (
+    opts.maxUsdPerTask !== undefined &&
+    (opts.session.usageUsd ?? 0) > opts.maxUsdPerTask
+  ) {
+    yield {
+      type: "budget.exceeded",
+      sessionId: opts.session.id,
+      reason: "max_usd",
+    };
+    opts.session.status = "idle";
+    yield {
+      type: "session.status",
+      sessionId: opts.session.id,
+      status: "idle",
+    };
+    return;
+  }
+
   const messageId = opts.ids?.messageId() ?? createId("msg");
   const turnId = opts.ids?.turnId() ?? createId("turn");
   const userId = createId("msg");
@@ -293,6 +343,7 @@ async function* runTurnBody(opts: {
         skillLoadPaths: opts.skillLoadPaths,
         skillsConfig: opts.skillsConfig,
         promptLayers,
+        prune: opts.prune,
       });
 
       if (round.kind === "error") {
@@ -364,6 +415,15 @@ async function* runTurnBody(opts: {
           ruleset: profile.ruleset,
         });
       }
+      if (round.toolCalls.length > 0) {
+        await opts.hooks?.run("PostToolBatch", {
+          matcher: "*",
+          session: {
+            id: opts.session.id,
+            workspaceRoot: opts.session.workspaceRoot,
+          },
+        });
+      }
     }
   } catch (error) {
     opts.session.status = "error";
@@ -382,6 +442,11 @@ async function* runTurnBody(opts: {
 
   const { providerId } = splitProvider(opts.session.model);
   opts.observability?.recordTokens(providerId, inputTokens, outputTokens);
+  opts.session.usage.inputTokens += inputTokens;
+  opts.session.usage.outputTokens += outputTokens;
+
+  const estimatedUsd: number | undefined = undefined;
+
   yield {
     type: "usage.turn",
     sessionId: opts.session.id,
@@ -393,10 +458,37 @@ async function* runTurnBody(opts: {
     cacheReadTokens: cacheReadTokens > 0 ? cacheReadTokens : undefined,
     cacheWriteTokens: cacheWriteTokens > 0 ? cacheWriteTokens : undefined,
     durationMs: Date.now() - started,
+    estimatedUsd,
   };
 
-  opts.session.usage.inputTokens += inputTokens;
-  opts.session.usage.outputTokens += outputTokens;
+  if (typeof estimatedUsd === "number") {
+    opts.session.usageUsd = (opts.session.usageUsd ?? 0) + estimatedUsd;
+  }
+
+  if (
+    opts.maxUsdPerTask !== undefined &&
+    (opts.session.usageUsd ?? 0) > opts.maxUsdPerTask
+  ) {
+    yield {
+      type: "budget.exceeded",
+      sessionId: opts.session.id,
+      reason: "max_usd",
+    };
+    opts.session.status = "idle";
+    yield {
+      type: "usage.session",
+      sessionId: opts.session.id,
+      inputTokens: opts.session.usage.inputTokens,
+      outputTokens: opts.session.usage.outputTokens,
+    };
+    yield {
+      type: "session.status",
+      sessionId: opts.session.id,
+      status: "idle",
+    };
+    return;
+  }
+
   yield {
     type: "usage.session",
     sessionId: opts.session.id,
@@ -429,6 +521,7 @@ function assembleSessionMessages(
   skillLoadPaths?: string[],
   skillsConfig?: CatalogOptions,
   promptLayers?: PromptLayers,
+  prune: PruneOptions = { enabled: false },
 ) {
   return assembleProviderMessages({
     messages: session.messages,
@@ -447,6 +540,7 @@ function assembleSessionMessages(
     skillBodies: session.activeSkills?.map((skill) => skill.body),
     priorStateMarkdown: session.priorStateMarkdown,
     systemNotes: session.systemNotes,
+    prune,
   });
 }
 
@@ -487,12 +581,14 @@ function estimateTurnTokens(opts: {
   skillLoadPaths?: string[];
   skillsConfig?: CatalogOptions;
   promptLayers?: PromptLayers;
+  prune?: PruneOptions;
 }): number {
   const assembled = assembleSessionMessages(
     opts.session,
     opts.skillLoadPaths,
     opts.skillsConfig,
     opts.promptLayers,
+    opts.prune,
   );
   return opts.context?.estimateTokens
     ? opts.context.estimateTokens(
@@ -579,6 +675,7 @@ async function* consumeModelRound(opts: {
   skillLoadPaths?: string[];
   skillsConfig?: CatalogOptions;
   promptLayers?: PromptLayers;
+  prune?: PruneOptions;
 }): AsyncGenerator<ZoxEvent, ModelRound> {
   let text = "";
   let inputTokens = 0;
@@ -596,6 +693,7 @@ async function* consumeModelRound(opts: {
         opts.skillLoadPaths,
         opts.skillsConfig,
         opts.promptLayers,
+        opts.prune,
       ),
     ),
     tools: opts.tools,
@@ -644,18 +742,151 @@ function appendSystemNote(session: StoredSession, note: string): void {
   session.systemNotes.push(note);
 }
 
+function cloneSessionForSubagent(parent: StoredSession): StoredSession {
+  return {
+    ...parent,
+    planJson: parent.planJson ? [...parent.planJson] : null,
+    activeSkills: parent.activeSkills
+      ? parent.activeSkills.map((skill) => ({ ...skill }))
+      : undefined,
+    systemNotes: parent.systemNotes ? [...parent.systemNotes] : undefined,
+    compactions: parent.compactions
+      ? parent.compactions.map((entry) => ({ ...entry }))
+      : undefined,
+    usage: { inputTokens: 0, outputTokens: 0 },
+    messages: [],
+    status: "idle",
+  };
+}
+
+function remapSubagentEventForParent(
+  event: ZoxEvent,
+  parentSessionId: string,
+): ZoxEvent {
+  if (!("sessionId" in event) || event.sessionId === parentSessionId) {
+    return event;
+  }
+  return { ...event, sessionId: parentSessionId };
+}
+
+async function* iterSubagentTurn(opts: {
+  session: StoredSession;
+  userContent: string;
+  router: TurnRouter;
+  tools: ToolRegistry;
+  permission?: PermissionResponder;
+  hooks?: HookRunner;
+  context?: ContextEngine;
+  overflowThreshold?: number;
+  prune?: PruneOptions;
+  observability?: TurnObservability;
+  skillLoadPaths?: string[];
+  webfetchAllowedHosts?: string[];
+  webfetchMaxBytes?: number;
+  remoteExec?: import("@zox/tools").ToolContext["remoteExec"];
+  sandboxEnvAllowlist?: string[];
+  sandboxAllowHosts?: string[];
+  memoryDb?: import("bun:sqlite").Database;
+  skillsConfig?: CatalogOptions;
+  instructionFiles?: string[];
+  preCompactTokenThreshold?: number;
+  onFileMutate?: (path: string) => Promise<void>;
+  afterFileMutate?: (path: string) => Promise<string | undefined>;
+  ids?: {
+    messageId(): string;
+    turnId(): string;
+    toolCallId(): string;
+    requestId(): string;
+  };
+  child: StoredSession;
+  parent: StoredSession;
+}): AsyncGenerator<ZoxEvent, { ok: boolean; text: string }> {
+  let text = "";
+  let completed = false;
+  let permissionPending = false;
+  for await (const event of runTurn({
+    session: opts.child,
+    userContent: opts.userContent,
+    router: opts.router,
+    tools: opts.tools,
+    permission: opts.permission,
+    hooks: opts.hooks,
+    context: opts.context,
+    overflowThreshold: opts.overflowThreshold,
+    prune: opts.prune,
+    observability: opts.observability,
+    skillLoadPaths: opts.skillLoadPaths,
+    webfetchAllowedHosts: opts.webfetchAllowedHosts,
+    webfetchMaxBytes: opts.webfetchMaxBytes,
+    remoteExec: opts.remoteExec,
+    sandboxEnvAllowlist: opts.sandboxEnvAllowlist,
+    sandboxAllowHosts: opts.sandboxAllowHosts,
+    memoryDb: opts.memoryDb,
+    skillsConfig: opts.skillsConfig,
+    instructionFiles: opts.instructionFiles,
+    preCompactTokenThreshold: opts.preCompactTokenThreshold,
+    onFileMutate: opts.onFileMutate,
+    afterFileMutate: opts.afterFileMutate,
+    ids: opts.ids,
+  })) {
+    if (event.type === "message.completed") {
+      text = event.content;
+      completed = true;
+    } else if (event.type === "error") {
+      text = event.message;
+    }
+    if (event.type === "tool.permission_required") {
+      yield remapSubagentEventForParent(event, opts.parent.id);
+    } else if (
+      event.type === "session.status" &&
+      event.status === "awaiting_permission"
+    ) {
+      permissionPending = true;
+      opts.parent.status = "awaiting_permission";
+      yield remapSubagentEventForParent(event, opts.parent.id);
+    } else if (
+      event.type === "session.status" &&
+      event.status === "running" &&
+      permissionPending
+    ) {
+      permissionPending = false;
+      opts.parent.status = "running";
+      yield remapSubagentEventForParent(event, opts.parent.id);
+    }
+  }
+  opts.parent.usage.inputTokens += opts.child.usage.inputTokens;
+  opts.parent.usage.outputTokens += opts.child.usage.outputTokens;
+  return { ok: completed, text };
+}
+
 async function* executeToolCall(input: {
   call: ToolCall;
   opts: {
     session: StoredSession;
+    router: TurnRouter;
     tools: ToolRegistry;
     permission?: PermissionResponder;
     hooks?: HookRunner;
+    context?: ContextEngine;
+    overflowThreshold?: number;
+    prune?: PruneOptions;
+    onOverflow?: (info: {
+      kind: "auto";
+      estimatedTokens: number;
+    }) => Promise<void> | AsyncIterable<ZoxEvent>;
     observability?: TurnObservability;
     skillLoadPaths?: string[];
     webfetchAllowedHosts?: string[];
     webfetchMaxBytes?: number;
+    remoteExec?: import("@zox/tools").ToolContext["remoteExec"];
+    sandboxEnvAllowlist?: string[];
+    sandboxAllowHosts?: string[];
     memoryDb?: import("bun:sqlite").Database;
+    skillsConfig?: CatalogOptions;
+    instructionFiles?: string[];
+    preCompactTokenThreshold?: number;
+    onFileMutate?: (path: string) => Promise<void>;
+    afterFileMutate?: (path: string) => Promise<string | undefined>;
     ids?: {
       messageId(): string;
       turnId(): string;
@@ -702,6 +933,14 @@ async function* executeToolCall(input: {
         name: call.name,
         arguments: call.arguments,
       };
+      await opts.hooks?.run("PermissionRequest", {
+        matcher: call.name,
+        tool: { name: call.name, arguments: call.arguments },
+        session: {
+          id: opts.session.id,
+          workspaceRoot: opts.session.workspaceRoot,
+        },
+      });
       const approved = opts.permission
         ? await opts.permission.wait(requestId)
         : false;
@@ -712,6 +951,16 @@ async function* executeToolCall(input: {
         status: "running",
       };
       decision = approved ? "allow" : "deny";
+      if (decision === "deny") {
+        await opts.hooks?.run("PermissionDenied", {
+          matcher: call.name,
+          tool: { name: call.name, arguments: call.arguments },
+          session: {
+            id: opts.session.id,
+            workspaceRoot: opts.session.workspaceRoot,
+          },
+        });
+      }
     }
     if (decision !== "allow") {
       result = {
@@ -762,6 +1011,57 @@ async function* executeToolCall(input: {
           content: "Unknown tool",
           truncated: false,
         };
+      } else if (call.name === "task") {
+        const prompt = args.prompt;
+        const agent =
+          args.agent === "build" || args.agent === "plan" ? args.agent : "plan";
+        if (typeof prompt !== "string" || prompt.length === 0) {
+          result = {
+            ok: false,
+            content: "Invalid arguments for task",
+            truncated: false,
+          };
+        } else {
+          await opts.hooks?.run("SubagentStart", {
+            matcher: "task",
+            session: {
+              id: opts.session.id,
+              workspaceRoot: opts.session.workspaceRoot,
+            },
+            prompt,
+          });
+          const child: StoredSession = {
+            ...cloneSessionForSubagent(opts.session),
+            id: createId("sess"),
+            agent,
+            messages: [],
+            status: "idle",
+          };
+          const childTools = opts.tools.without("task");
+          const sub = yield* iterSubagentTurn({
+            ...opts,
+            child,
+            parent: opts.session,
+            userContent: prompt,
+            tools: childTools,
+          });
+          await opts.hooks?.run("SubagentStop", {
+            matcher: "task",
+            session: {
+              id: opts.session.id,
+              workspaceRoot: opts.session.workspaceRoot,
+            },
+          });
+          const content =
+            sub.text.length > MAX_TOOL_OUTPUT_CHARS
+              ? sub.text.slice(0, MAX_TOOL_OUTPUT_CHARS)
+              : sub.text;
+          result = {
+            ok: sub.ok,
+            content,
+            truncated: sub.text.length > MAX_TOOL_OUTPUT_CHARS,
+          };
+        }
       } else {
         const runTool = () =>
           tool.execute(args, {
@@ -771,11 +1071,18 @@ async function* executeToolCall(input: {
               id: opts.session.id,
               workspaceRoot: opts.session.workspaceRoot,
               agent: opts.session.agent,
+              sandboxMode: opts.session.sandboxMode,
             },
+            parentSession: opts.session,
             loadPaths: opts.skillLoadPaths,
             allowedHosts: opts.webfetchAllowedHosts,
             webfetchMaxBytes: opts.webfetchMaxBytes,
+            remoteExec: opts.remoteExec,
+            sandboxEnvAllowlist: opts.sandboxEnvAllowlist,
+            sandboxAllowHosts: opts.sandboxAllowHosts,
             memoryDb: opts.memoryDb,
+            onFileMutate: opts.onFileMutate,
+            afterFileMutate: opts.afterFileMutate,
             activateSkill: (skill) => {
               opts.session.activeSkills = activateSkill(
                 opts.session.activeSkills ?? [],
@@ -814,6 +1121,16 @@ async function* executeToolCall(input: {
             workspaceRoot: opts.session.workspaceRoot,
           },
         });
+        if (!result.ok) {
+          await opts.hooks.run("PostToolUseFailure", {
+            matcher: call.name,
+            tool: { name: call.name, arguments: args },
+            session: {
+              id: opts.session.id,
+              workspaceRoot: opts.session.workspaceRoot,
+            },
+          });
+        }
       }
     }
   }

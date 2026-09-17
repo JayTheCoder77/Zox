@@ -52,8 +52,13 @@ describe("openapi stub", () => {
     for (const path of paths) {
       expect(yaml).toContain(`${path}:`);
     }
-    expect(yaml).toMatch(/\n  \/sessions:\n    get:/);
+    expect(yaml).toMatch(/\n {2}\/sessions:\n {4}get:/);
     expect(yaml).toContain("SessionListResponse");
+  });
+
+  test("includes GET /sessions/{id}/export", () => {
+    expect(yaml).toContain("/sessions/{id}/export:");
+    expect(yaml).toContain("includeMemory");
   });
 
   test("uses Bearer auth", () => {

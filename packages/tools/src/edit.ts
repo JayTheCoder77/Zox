@@ -1,4 +1,5 @@
 import { jailPath } from "@zox/sandbox";
+import { appendAfterMutate } from "./after-mutate.ts";
 import description from "./descriptions/edit.txt" with { type: "text" };
 import { toolContent, toolDenied, toolError, type ZoxTool } from "./types.ts";
 
@@ -48,10 +49,16 @@ export const editTool: ZoxTool = {
         );
       }
 
+      await ctx.onFileMutate?.(path);
       await Bun.write(jailed.path, content.replace(oldString, newString));
+      const resultContent = await appendAfterMutate(
+        `Edited ${jailed.path}`,
+        ctx,
+        jailed.path,
+      );
       return {
         ok: true,
-        ...toolContent(`Edited ${jailed.path}`, ctx.maxToolOutputChars),
+        ...toolContent(resultContent, ctx.maxToolOutputChars),
       };
     } catch (error) {
       return toolError(

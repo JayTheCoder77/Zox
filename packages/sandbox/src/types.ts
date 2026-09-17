@@ -27,4 +27,8 @@ export type SandboxConfig = {
     cleanup: "keep" | "remove";
     requireGit: boolean;
   };
+  envAllowlist?: string[];
+  network?: {
+    allowHosts?: string[];
+  };
 };

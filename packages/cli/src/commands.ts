@@ -59,5 +59,21 @@ export async function executeSlash(
   }
 
   const result = await session.command(parsed.name, parsed.args);
+  if (isExpandResult(result)) {
+    const run = session.send(result.content);
+    await run.waitForIdle();
+    return;
+  }
   console.log(JSON.stringify(result));
+}
+
+function isExpandResult(
+  value: unknown,
+): value is { type: "expand"; content: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { type?: unknown }).type === "expand" &&
+    typeof (value as { content?: unknown }).content === "string"
+  );
 }

@@ -20,6 +20,8 @@ const BUILD_TOOLS = [
   "webfetch",
   "memory_search",
   "memory_write",
+  "code_search",
+  "task",
   "mcp_*",
 ];
 
@@ -41,6 +43,7 @@ const PLAN_TOOLS = [
   "todowrite",
   "memory_search",
   "memory_write",
+  "code_search",
 ];
 
 function ruleset(
@@ -73,6 +76,7 @@ const PROFILES: Record<"build" | "plan", AgentProfile> = {
         "skill",
         "todowrite",
         "memory_search",
+        "code_search",
         "mcp_*",
       ],
       [],
@@ -86,7 +90,14 @@ const PROFILES: Record<"build" | "plan", AgentProfile> = {
   },
 };
 
-for (const tool of ["write", "edit", "bash", "webfetch", "memory_write"]) {
+for (const tool of [
+  "write",
+  "edit",
+  "bash",
+  "webfetch",
+  "memory_write",
+  "task",
+]) {
   PROFILES.build.ruleset[tool] = { default: "ask" };
 }
 PROFILES.plan.ruleset.memory_search = { default: "allow" };

@@ -7,7 +7,14 @@ export type HookEvent =
   | "PostCompact"
   | "Stop"
   | "SessionEnd"
-  | "InstructionsLoaded";
+  | "InstructionsLoaded"
+  | "PermissionRequest"
+  | "PermissionDenied"
+  | "PostToolUseFailure"
+  | "PostToolBatch"
+  | "UserPromptExpansion"
+  | "SubagentStart"
+  | "SubagentStop";
 
 export type HookInput = {
   event: HookEvent;
@@ -51,4 +58,11 @@ export const HOOK_EVENTS = [
   "Stop",
   "SessionEnd",
   "InstructionsLoaded",
+  "PermissionRequest",
+  "PermissionDenied",
+  "PostToolUseFailure",
+  "PostToolBatch",
+  "UserPromptExpansion",
+  "SubagentStart",
+  "SubagentStop",
 ] as const satisfies readonly HookEvent[];

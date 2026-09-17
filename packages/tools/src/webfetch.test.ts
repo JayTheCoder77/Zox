@@ -60,6 +60,48 @@ describe("webfetch tool", () => {
     expect(result.content.length).toBeLessThanOrEqual(8);
   });
 
+  test("denies webfetch in container mode unless host is allowlisted", async () => {
+    let fetched = false;
+    const denied = await webfetchTool.execute(
+      { url: "https://example.com/page" },
+      ctx({
+        session: {
+          id: "s",
+          workspaceRoot: "/tmp",
+          agent: "build",
+          sandboxMode: "container",
+        },
+        fetch: (async () => {
+          fetched = true;
+          return new Response("no");
+        }) as unknown as typeof fetch,
+      }),
+    );
+    expect(denied.ok).toBe(false);
+    expect(denied.denied).toBe(true);
+    expect(fetched).toBe(false);
+
+    fetched = false;
+    const allowed = await webfetchTool.execute(
+      { url: "https://example.com/page" },
+      ctx({
+        session: {
+          id: "s",
+          workspaceRoot: "/tmp",
+          agent: "build",
+          sandboxMode: "remote",
+        },
+        allowedHosts: ["example.com"],
+        fetch: (async () => {
+          fetched = true;
+          return new Response("ok");
+        }) as unknown as typeof fetch,
+      }),
+    );
+    expect(allowed.ok).toBe(true);
+    expect(fetched).toBe(true);
+  });
+
   test("stubs fetch for a 200 text/html response", async () => {
     const result = await webfetchTool.execute(
       { url: "https://example.com/page" },

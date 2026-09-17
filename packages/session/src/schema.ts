@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 7;
 
 const V1 = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -124,5 +124,61 @@ CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
 END;
 `);
     db.run("INSERT INTO schema_migrations (version) VALUES (?)", [4]);
+  }
+  if (current < 5) {
+    db.exec(`
+CREATE TABLE IF NOT EXISTS file_snapshots (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  bytes BLOB NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+`);
+    db.run("INSERT INTO schema_migrations (version) VALUES (?)", [5]);
+  }
+  if (current < 6) {
+    db.exec(`
+CREATE TABLE IF NOT EXISTS code_chunks (
+  id INTEGER PRIMARY KEY,
+  workspace_root TEXT NOT NULL,
+  path TEXT NOT NULL,
+  start_line INTEGER NOT NULL,
+  text TEXT NOT NULL
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS code_chunks_fts USING fts5(
+  text,
+  content='code_chunks',
+  content_rowid='id'
+);
+CREATE TRIGGER IF NOT EXISTS code_chunks_ai AFTER INSERT ON code_chunks BEGIN
+  INSERT INTO code_chunks_fts(rowid, text) VALUES (new.id, new.text);
+END;
+CREATE TRIGGER IF NOT EXISTS code_chunks_ad AFTER DELETE ON code_chunks BEGIN
+  INSERT INTO code_chunks_fts(code_chunks_fts, rowid, text) VALUES('delete', old.id, old.text);
+END;
+CREATE TRIGGER IF NOT EXISTS code_chunks_au AFTER UPDATE ON code_chunks BEGIN
+  INSERT INTO code_chunks_fts(code_chunks_fts, rowid, text) VALUES('delete', old.id, old.text);
+  INSERT INTO code_chunks_fts(rowid, text) VALUES (new.id, new.text);
+END;
+`);
+    db.run("INSERT INTO schema_migrations (version) VALUES (?)", [6]);
+  }
+  if (current < 7) {
+    const columns = db
+      .query<{ name: string }, []>("PRAGMA table_info(sessions)")
+      .all();
+    if (!columns.some((col) => col.name === "turn_count")) {
+      db.exec(
+        "ALTER TABLE sessions ADD COLUMN turn_count INTEGER NOT NULL DEFAULT 0",
+      );
+    }
+    if (!columns.some((col) => col.name === "usage_usd")) {
+      db.exec(
+        "ALTER TABLE sessions ADD COLUMN usage_usd REAL NOT NULL DEFAULT 0",
+      );
+    }
+    db.run("INSERT INTO schema_migrations (version) VALUES (?)", [7]);
   }
 }

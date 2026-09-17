@@ -21,9 +21,16 @@ import { DEFAULT_SANDBOX_CONFIG } from "@zox/sandbox";
 import { SqliteSessionStore } from "@zox/session";
 import { createBuiltinTools, ToolRegistry } from "@zox/tools";
 import { createApp } from "./app.ts";
+import { sessionWebSocketHandlers } from "./ws.ts";
 
 export type { AppConfig, AppRouter } from "./app.ts";
 export { createApp } from "./app.ts";
+export {
+  type SessionWsData,
+  sessionWebSocket,
+  sessionWebSocketHandlers,
+  type WsClientMessage,
+} from "./ws.ts";
 
 export async function listen(opts?: {
   port?: number;
@@ -31,6 +38,9 @@ export async function listen(opts?: {
   token?: string;
   trustStorePath?: string;
   sandboxMode?: "host" | "worktree" | "container" | "remote";
+  worktreeCleanup?: "keep" | "remove";
+  workspaceRoot?: string;
+  budget?: { maxTurns?: number; maxUsdPerTask?: number };
 }): Promise<{ port: number; stop(): void }> {
   const fromEnv = process.env.ZOXX_SERVER_TOKEN;
   const token = opts?.token ?? fromEnv ?? crypto.randomUUID();
@@ -40,7 +50,7 @@ export async function listen(opts?: {
     console.error("ZOXX_SERVER_TOKEN generated");
   }
 
-  const cwd = process.cwd();
+  const cwd = opts?.workspaceRoot ?? process.cwd();
   const zoxConfig = loadZoxConfig(cwd);
   const { adapters, providerMeta } = adaptersFromConfig(zoxConfig);
   const tools = new ToolRegistry();
@@ -92,7 +102,11 @@ export async function listen(opts?: {
       model: zoxConfig.model ?? "mock/echo",
       agent: zoxConfig.agent ?? "build",
       providers: providerMeta,
-      sandbox: { mode: sandboxMode },
+      sandbox: {
+        mode: sandboxMode,
+        envAllowlist: zoxConfig.sandbox?.envAllowlist,
+        network: zoxConfig.sandbox?.network,
+      },
       observability: zoxConfig.observability ?? { metrics: metricsEnabled },
       memory: {
         autoSummarize,
@@ -103,11 +117,18 @@ export async function listen(opts?: {
       },
       skills: zoxConfig.skills,
       tools: zoxConfig.tools,
-      budget: zoxConfig.budget,
-      context: zoxConfig.context,
+      budget: {
+        ...zoxConfig.budget,
+        ...opts?.budget,
+      },
+      context: {
+        ...zoxConfig.context,
+        windowTokens: zoxConfig.context?.windowTokens,
+      },
       instructions: zoxConfig.instructions,
       hooks: hookFiles[0],
       worktreeCleanup:
+        opts?.worktreeCleanup ??
         zoxConfig.sandbox?.worktree?.cleanup ??
         DEFAULT_SANDBOX_CONFIG.worktree.cleanup,
     },
@@ -121,6 +142,15 @@ export async function listen(opts?: {
       const url = new URL(req.url);
       if (
         req.method === "GET" &&
+        /^\/sessions\/[^/]+\/ws$/.test(url.pathname)
+      ) {
+        bunServer.timeout(req, 0);
+        const res = app.handleWebSocket(req, bunServer);
+        if (res === undefined) return;
+        return res;
+      }
+      if (
+        req.method === "GET" &&
         /^\/sessions\/[^/]+\/events$/.test(url.pathname)
       ) {
         // SSE may sit idle until the model emits; Bun's default 10s idleTimeout
@@ -129,6 +159,7 @@ export async function listen(opts?: {
       }
       return app.fetch(req, bunServer);
     },
+    websocket: sessionWebSocketHandlers,
   });
   return {
     port: server.port ?? port,

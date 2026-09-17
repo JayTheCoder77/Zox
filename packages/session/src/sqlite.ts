@@ -48,6 +48,8 @@ type SessionRow = {
   window_warned: number | null;
   usage_input_tokens: number;
   usage_output_tokens: number;
+  turn_count: number | null;
+  usage_usd: number | null;
   created_at: number;
   active_skills: string | null;
 };
@@ -157,6 +159,8 @@ export class SqliteSessionStore implements SessionStore {
         inputTokens: row.usage_input_tokens,
         outputTokens: row.usage_output_tokens,
       },
+      turnCount: row.turn_count ?? 0,
+      usageUsd: row.usage_usd ?? 0,
       agent: row.agent,
       model: row.model,
       status: asStatus(row.status),
@@ -215,8 +219,8 @@ export class SqliteSessionStore implements SessionStore {
           `INSERT INTO sessions (
             id, workspace_root, agent, model, status, sandbox_root, sandbox_mode,
             plan_json, prior_state_markdown, system_notes, last_trace_id, window_warned,
-            usage_input_tokens, usage_output_tokens, created_at, active_skills
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            usage_input_tokens, usage_output_tokens, turn_count, usage_usd, created_at, active_skills
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET
             workspace_root = excluded.workspace_root,
             agent = excluded.agent,
@@ -231,6 +235,8 @@ export class SqliteSessionStore implements SessionStore {
             window_warned = excluded.window_warned,
             usage_input_tokens = excluded.usage_input_tokens,
             usage_output_tokens = excluded.usage_output_tokens,
+            turn_count = excluded.turn_count,
+            usage_usd = excluded.usage_usd,
             active_skills = excluded.active_skills`,
         )
         .run(
@@ -254,6 +260,8 @@ export class SqliteSessionStore implements SessionStore {
               : 0,
           session.usage.inputTokens,
           session.usage.outputTokens,
+          session.turnCount ?? 0,
+          session.usageUsd ?? 0,
           createdAt,
           serializeActiveSkills(session.activeSkills),
         );

@@ -30,16 +30,33 @@ export const zoxConfigSchema = z.object({
           cleanup: z.enum(["keep", "remove"]).optional(),
         })
         .optional(),
+      envAllowlist: z.array(z.string()).optional(),
+      network: z
+        .object({
+          allowHosts: z.array(z.string()).optional(),
+        })
+        .optional(),
     })
     .optional(),
   context: z
     .object({
+      windowTokens: z.number().int().positive().optional(),
       overflowThreshold: z.number().gt(0).lte(1).optional(),
+      prune: z
+        .object({
+          enabled: z.boolean().optional(),
+          protectMinTokens: z.number().int().positive().optional(),
+          minReclaim: z.number().int().positive().optional(),
+          protectedTools: z.array(z.string().min(1)).optional(),
+        })
+        .optional(),
     })
     .optional(),
   budget: z
     .object({
       preCompactTokenThreshold: z.number().int().positive().optional(),
+      maxTurns: z.number().int().nonnegative().optional(),
+      maxUsdPerTask: z.number().nonnegative().optional(),
     })
     .optional(),
   memory: z
@@ -73,6 +90,16 @@ export const zoxConfigSchema = z.object({
   mcp: z
     .object({
       servers: z.record(z.string(), mcpServerSchema).optional(),
+    })
+    .optional(),
+  // Dense embeddings are deferred; apiKeyEnv is parsed and ignored (BM25/FTS5 only).
+  index: z
+    .object({
+      embeddings: z
+        .object({
+          apiKeyEnv: z.string().min(1).optional(),
+        })
+        .optional(),
     })
     .optional(),
   providers: z.record(z.string(), providerSchema).optional(),

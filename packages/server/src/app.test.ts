@@ -6,7 +6,7 @@ import { MemorySessionStore } from "@zox/core";
 import { createHookRunner } from "@zox/hooks";
 import { createObservability } from "@zox/observability";
 import { createMockAdapter, createProviderRouter } from "@zox/providers";
-import { SqliteSessionStore } from "@zox/session";
+import { recordFileSnapshot, SqliteSessionStore } from "@zox/session";
 import { createBuiltinTools, ToolRegistry } from "@zox/tools";
 import { createApp } from "./app.ts";
 
@@ -1199,5 +1199,160 @@ describe("createApp", () => {
       "sharedtoken http fact only in A",
     ]);
     expect(sessionB.id).not.toBe(sessionA.id);
+  });
+
+  test("POST /sessions/:id/revert restores a prepared snapshot row", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-revert-http-"));
+    await Bun.write(join(root, "a.txt"), "old");
+    const store = new SqliteSessionStore({
+      workspaceRoot: root,
+      path: join(root, ".zox/state.sqlite"),
+    });
+    const server = createApp({
+      token,
+      store,
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+      config: { sandbox: { mode: "host" } },
+    });
+    const session = await createSession(server, root);
+    const snap = await recordFileSnapshot({
+      db: store.db,
+      sessionId: session.id,
+      sandboxRoot: root,
+      relativePath: "a.txt",
+    });
+    if ("skipped" in snap) throw new Error("should record");
+    await Bun.write(join(root, "a.txt"), "new");
+
+    const missing = await server.request(`/sessions/${session.id}/revert`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ snapshotId: "snap_missing" }),
+    });
+    expect(missing.status).toBe(404);
+
+    const restored = await server.request(`/sessions/${session.id}/revert`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ snapshotId: snap.id }),
+    });
+    expect(restored.status).toBe(200);
+    const json = (await restored.json()) as {
+      path: string;
+      snapshotId: string;
+    };
+    expect(json.snapshotId).toBe(snap.id);
+    expect(await Bun.file(join(root, "a.txt")).text()).toBe("old");
+
+    await Bun.write(join(root, "a.txt"), "newer");
+    const latest = await server.request(`/sessions/${session.id}/revert`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(latest.status).toBe(200);
+    expect(await Bun.file(join(root, "a.txt")).text()).toBe("old");
+
+    const viaCommand = await server.request(
+      `/sessions/${session.id}/commands`,
+      {
+        method: "POST",
+        headers: { ...auth, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "help" }),
+      },
+    );
+    const helpJson = (await viaCommand.json()) as { commands: string[] };
+    expect(helpJson.commands).toContain("revert");
+
+    await Bun.write(join(root, "a.txt"), "from-command");
+    const commandRevert = await server.request(
+      `/sessions/${session.id}/commands`,
+      {
+        method: "POST",
+        headers: { ...auth, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "revert", args: [snap.id] }),
+      },
+    );
+    expect(commandRevert.status).toBe(200);
+    expect(await Bun.file(join(root, "a.txt")).text()).toBe("old");
+  });
+
+  test("GET /sessions/:id/export redacts secrets and omits memory by default", async () => {
+    const store = new MemorySessionStore();
+    const server = app({ store });
+    const session = await createSession(server);
+    const stored = store.get(session.id);
+    if (!stored) throw new Error("missing session");
+    stored.messages.push({
+      id: "msg_secret",
+      role: "user",
+      content:
+        'OPENAI_API_KEY=sk-123456789 {"apiKey":"leak"} Bearer abc.def AIzaSyLeak sk-ant-leak ZOXX_SERVER_TOKEN=tok_live',
+    });
+    store.save(stored);
+
+    const res = await server.request(`/sessions/${session.id}/export`, {
+      headers: auth,
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as {
+      version: number;
+      memory?: string[];
+      messages: Array<{ content: string }>;
+    };
+    expect(json.version).toBe(1);
+    expect(json.memory).toBeUndefined();
+    const blob = JSON.stringify(json);
+    expect(blob).toContain("[redacted]");
+    expect(blob).not.toContain("sk-123456789");
+    expect(blob).not.toContain("sk-ant-leak");
+    expect(blob).not.toContain("AIzaSyLeak");
+    expect(blob).not.toContain("tok_live");
+    expect(blob).not.toContain("abc.def");
+    expect(blob).not.toContain('"leak"');
+  });
+
+  test("GET /sessions/:id/export?includeMemory=true includes redacted memory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-export-mem-"));
+    const store = new SqliteSessionStore({
+      workspaceRoot: root,
+      path: join(root, ".zox/state.sqlite"),
+    });
+    const server = createApp({
+      token,
+      store,
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+      config: { sandbox: { mode: "host" } },
+    });
+    const session = await createSession(server, root);
+    const written = await server.request(`/sessions/${session.id}/memory`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "remember OPENAI_API_KEY=sk-memsecret" }),
+    });
+    expect(written.status).toBe(201);
+
+    const omitted = await server.request(`/sessions/${session.id}/export`, {
+      headers: auth,
+    });
+    const omittedJson = (await omitted.json()) as { memory?: string[] };
+    expect(omittedJson.memory).toBeUndefined();
+
+    const included = await server.request(
+      `/sessions/${session.id}/export?includeMemory=true`,
+      { headers: auth },
+    );
+    expect(included.status).toBe(200);
+    const json = (await included.json()) as { memory?: string[] };
+    expect(json.memory?.some((m) => m.includes("[redacted]"))).toBe(true);
+    expect(JSON.stringify(json)).not.toContain("sk-memsecret");
+  });
+
+  test("GET /sessions/:id/export returns 404 for unknown session", async () => {
+    const server = app();
+    const res = await server.request("/sessions/sess_missing/export", {
+      headers: auth,
+    });
+    expect(res.status).toBe(404);
   });
 });

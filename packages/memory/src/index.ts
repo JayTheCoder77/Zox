@@ -1,4 +1,9 @@
 export {
+  codeChunkCount,
+  indexWorkspace,
+  searchCode,
+} from "./code-index.ts";
+export {
   type DurableMemory,
   loadStartupMemories,
   searchDurableMemories,

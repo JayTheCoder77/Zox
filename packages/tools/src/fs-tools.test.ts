@@ -117,6 +117,96 @@ describe("fs tools", () => {
     expect(result.truncated).toBe(true);
   });
 
+  test("write calls onFileMutate before writing", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-fs-"));
+    const tools = new ToolRegistry();
+    for (const t of createBuiltinTools()) tools.register(t);
+    const order: string[] = [];
+    const result = await requiredTool(tools, "write").execute(
+      { path: "n.txt", content: "hi" },
+      {
+        ...(await ctx(root)),
+        async onFileMutate(path) {
+          order.push(`mutate:${path}`);
+          expect(await Bun.file(join(root, "n.txt")).exists()).toBe(false);
+        },
+      },
+    );
+    expect(result.ok).toBe(true);
+    order.push("wrote");
+    expect(order).toEqual(["mutate:n.txt", "wrote"]);
+    expect(await Bun.file(join(root, "n.txt")).text()).toBe("hi");
+  });
+
+  test("edit calls onFileMutate before replacing", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-fs-"));
+    await Bun.write(join(root, "b.ts"), "foo\nbaz\n");
+    const tools = new ToolRegistry();
+    for (const t of createBuiltinTools()) tools.register(t);
+    const order: string[] = [];
+    const result = await requiredTool(tools, "edit").execute(
+      { path: "b.ts", oldString: "foo", newString: "bar" },
+      {
+        ...(await ctx(root)),
+        async onFileMutate(path) {
+          order.push(`mutate:${path}`);
+          expect(await Bun.file(join(root, "b.ts")).text()).toBe("foo\nbaz\n");
+        },
+      },
+    );
+    expect(result.ok).toBe(true);
+    order.push("edited");
+    expect(order).toEqual(["mutate:b.ts", "edited"]);
+    expect(await Bun.file(join(root, "b.ts")).text()).toBe("bar\nbaz\n");
+  });
+
+  test("write appends afterFileMutate output", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-fs-"));
+    const tools = new ToolRegistry();
+    for (const t of createBuiltinTools()) tools.register(t);
+    const result = await requiredTool(tools, "write").execute(
+      { path: "a.ts", content: "const n: number = 1;\n" },
+      {
+        ...(await ctx(root)),
+        async afterFileMutate(path) {
+          expect(path.endsWith("/a.ts")).toBe(true);
+          expect(await Bun.file(path).text()).toBe("const n: number = 1;\n");
+          return "--- diagnostics (typescript) ---\na.ts:1:1: demo";
+        },
+      },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.content).toContain("Wrote ");
+    expect(result.content).toContain("/a.ts");
+    expect(result.content).toContain(
+      "--- diagnostics (typescript) ---\na.ts:1:1: demo",
+    );
+  });
+
+  test("edit appends afterFileMutate output", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-fs-"));
+    await Bun.write(join(root, "b.ts"), "foo\nbaz\n");
+    const tools = new ToolRegistry();
+    for (const t of createBuiltinTools()) tools.register(t);
+    const result = await requiredTool(tools, "edit").execute(
+      { path: "b.ts", oldString: "foo", newString: "bar" },
+      {
+        ...(await ctx(root)),
+        async afterFileMutate(path) {
+          expect(path.endsWith("/b.ts")).toBe(true);
+          expect(await Bun.file(path).text()).toBe("bar\nbaz\n");
+          return "--- diagnostics (typescript) ---\nb.ts:1:1: demo";
+        },
+      },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.content).toContain("Edited ");
+    expect(result.content).toContain("/b.ts");
+    expect(result.content).toContain(
+      "--- diagnostics (typescript) ---\nb.ts:1:1: demo",
+    );
+  });
+
   test("edit rejects overlapping oldString matches", async () => {
     const root = await mkdtemp(join(tmpdir(), "zox-fs-"));
     await Bun.write(join(root, "a.txt"), "aaa");

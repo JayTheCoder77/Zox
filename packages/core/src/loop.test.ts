@@ -778,6 +778,210 @@ describe("runTurn", () => {
     expect(sess.status === "idle" || sess.status === "error").toBe(true);
   });
 
+  test("fires PermissionRequest then PermissionDenied when the user denies", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-loop-perm-hooks-"));
+    let n = 0;
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* () {
+            n += 1;
+            if (n === 1) {
+              yield {
+                type: "tool-call",
+                id: "tcw",
+                name: "write",
+                arguments: { path: "out.txt", content: "nope" },
+              };
+              yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+              yield { type: "done" };
+              return;
+            }
+            yield { type: "text-delta", text: "denied write" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const tools = new ToolRegistry();
+    for (const t of createBuiltinTools()) tools.register(t);
+    const sess = session();
+    sess.workspaceRoot = root;
+    sess.sandboxRoot = root;
+    const hookCalls: Array<{ event: string; payload: unknown }> = [];
+    const hooks = {
+      async run(event: string, payload: unknown) {
+        hookCalls.push({ event, payload });
+        return { decision: "allow" as const };
+      },
+    };
+    for await (const _e of runTurn({
+      session: sess,
+      userContent: "write it",
+      router,
+      tools,
+      hooks,
+      permission: { wait: async () => false },
+    })) {
+      /* drain */
+    }
+    const names = hookCalls.map((call) => call.event);
+    const requestIndex = names.indexOf("PermissionRequest");
+    const deniedIndex = names.indexOf("PermissionDenied");
+    expect(requestIndex).toBeGreaterThanOrEqual(0);
+    expect(deniedIndex).toBeGreaterThan(requestIndex);
+    expect(hookCalls[requestIndex]?.payload).toMatchObject({
+      matcher: "write",
+      tool: {
+        name: "write",
+        arguments: { path: "out.txt", content: "nope" },
+      },
+      session: { id: "sess_1", workspaceRoot: root },
+    });
+    expect(hookCalls[deniedIndex]?.payload).toMatchObject({
+      matcher: "write",
+      tool: {
+        name: "write",
+        arguments: { path: "out.txt", content: "nope" },
+      },
+      session: { id: "sess_1", workspaceRoot: root },
+    });
+  });
+
+  test("fires PostToolUseFailure when a tool returns ok false", async () => {
+    let n = 0;
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* () {
+            n += 1;
+            if (n === 1) {
+              yield {
+                type: "tool-call",
+                id: "tc_fail",
+                name: "read",
+                arguments: { path: "missing.ts" },
+              };
+              yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+              yield { type: "done" };
+              return;
+            }
+            yield { type: "text-delta", text: "failed" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const tools = new ToolRegistry();
+    tools.register({
+      name: "read",
+      description: "read",
+      parameters: { type: "object", properties: {} },
+      async execute() {
+        return { ok: false, content: "not found", truncated: false };
+      },
+    });
+    const hookCalls: Array<{ event: string; payload: unknown }> = [];
+    const hooks = {
+      async run(event: string, payload: unknown) {
+        hookCalls.push({ event, payload });
+        return { decision: "allow" as const };
+      },
+    };
+    for await (const _e of runTurn({
+      session: session(),
+      userContent: "read missing",
+      router,
+      tools,
+      hooks,
+    })) {
+      /* drain */
+    }
+    const failure = hookCalls.find(
+      (call) => call.event === "PostToolUseFailure",
+    );
+    expect(failure).toBeDefined();
+    expect(failure?.payload).toMatchObject({
+      matcher: "read",
+      tool: { name: "read", arguments: { path: "missing.ts" } },
+      session: { id: "sess_1", workspaceRoot: "/tmp/ws" },
+    });
+    const postUseIndex = hookCalls.findIndex(
+      (call) => call.event === "PostToolUse",
+    );
+    const failureIndex = hookCalls.findIndex(
+      (call) => call.event === "PostToolUseFailure",
+    );
+    expect(postUseIndex).toBeGreaterThanOrEqual(0);
+    expect(failureIndex).toBeGreaterThan(postUseIndex);
+  });
+
+  test("fires PostToolBatch once after two tools in one round", async () => {
+    let n = 0;
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* () {
+            n += 1;
+            if (n === 1) {
+              yield {
+                type: "tool-call",
+                id: "tc1",
+                name: "read",
+                arguments: { path: "a.ts" },
+              };
+              yield {
+                type: "tool-call",
+                id: "tc2",
+                name: "read",
+                arguments: { path: "b.ts" },
+              };
+              yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+              yield { type: "done" };
+              return;
+            }
+            yield { type: "text-delta", text: "done" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const tools = new ToolRegistry();
+    tools.register({
+      name: "read",
+      description: "read",
+      parameters: { type: "object", properties: {} },
+      async execute() {
+        return { ok: true, content: "ok", truncated: false };
+      },
+    });
+    const hookCalls: Array<{ event: string; payload: unknown }> = [];
+    const hooks = {
+      async run(event: string, payload: unknown) {
+        hookCalls.push({ event, payload });
+        return { decision: "allow" as const };
+      },
+    };
+    for await (const _e of runTurn({
+      session: session(),
+      userContent: "read both",
+      router,
+      tools,
+      hooks,
+    })) {
+      /* drain */
+    }
+    const batches = hookCalls.filter((call) => call.event === "PostToolBatch");
+    expect(batches).toHaveLength(1);
+    expect(batches[0]?.payload).toMatchObject({
+      matcher: "*",
+      session: { id: "sess_1", workspaceRoot: "/tmp/ws" },
+    });
+  });
+
   test("passes webfetch allowlist and maxBytes into tool execute context", async () => {
     let seen:
       | { allowedHosts?: string[]; webfetchMaxBytes?: number }
@@ -832,6 +1036,242 @@ describe("runTurn", () => {
     expect(seen).toEqual({
       allowedHosts: ["example.com"],
       webfetchMaxBytes: 4096,
+    });
+  });
+
+  test("task tool runs a nested plan turn and returns its text", async () => {
+    let n = 0;
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* () {
+            n += 1;
+            if (n === 1) {
+              yield {
+                type: "tool-call",
+                id: "tc_task",
+                name: "task",
+                arguments: { prompt: "look around" },
+              };
+              yield { type: "usage", inputTokens: 2, outputTokens: 1 };
+              yield { type: "done" };
+              return;
+            }
+            if (n === 2) {
+              yield { type: "text-delta", text: "investigated" };
+              yield { type: "usage", inputTokens: 5, outputTokens: 3 };
+              yield { type: "done" };
+              return;
+            }
+            yield { type: "text-delta", text: "ok" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const tools = new ToolRegistry();
+    for (const t of createBuiltinTools()) tools.register(t);
+    const hookCalls: string[] = [];
+    const hooks = {
+      async run(event: string) {
+        hookCalls.push(event);
+        return { decision: "allow" as const };
+      },
+    };
+    const sess = session();
+    const events = [];
+    for await (const e of runTurn({
+      session: sess,
+      userContent: "delegate",
+      router,
+      tools,
+      hooks,
+      permission: { wait: async () => true },
+    })) {
+      events.push(e);
+    }
+    const subagentHooks = hookCalls.filter((e) => e.startsWith("Subagent"));
+    expect(subagentHooks).toEqual(["SubagentStart", "SubagentStop"]);
+    expect(
+      events.some(
+        (e) => e.type === "tool.completed" && e.name === "task" && e.ok,
+      ),
+    ).toBe(true);
+    expect(
+      sess.messages.some(
+        (m) =>
+          m.role === "tool" &&
+          m.name === "task" &&
+          m.content === "investigated",
+      ),
+    ).toBe(true);
+    expect(
+      events.some(
+        (e) => e.type === "message.delta" && e.delta === "investigated",
+      ),
+    ).toBe(false);
+    expect(
+      events.some((e) => e.type === "message.completed" && e.content === "ok"),
+    ).toBe(true);
+    expect(sess.usage).toEqual({ inputTokens: 8, outputTokens: 5 });
+  });
+
+  test("child registry omits task so nested task cannot run", () => {
+    const tools = new ToolRegistry();
+    for (const t of createBuiltinTools()) tools.register(t);
+    const child = tools.without("task");
+    expect(child.get("task")).toBeUndefined();
+    expect(child.list().map((t) => t.name)).not.toContain("task");
+  });
+
+  test("nested subagent forwards permission events to parent bus", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-loop-subperm-"));
+    let n = 0;
+    const permissionWaits: string[] = [];
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* () {
+            n += 1;
+            if (n === 1) {
+              yield {
+                type: "tool-call",
+                id: "tc_task",
+                name: "task",
+                arguments: { prompt: "write a file", agent: "build" },
+              };
+              yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+              yield { type: "done" };
+              return;
+            }
+            if (n === 2) {
+              yield {
+                type: "tool-call",
+                id: "tc_child_write",
+                name: "write",
+                arguments: { path: "child.txt", content: "hi" },
+              };
+              yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+              yield { type: "done" };
+              return;
+            }
+            if (n === 3) {
+              yield { type: "text-delta", text: "child done" };
+              yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+              yield { type: "done" };
+              return;
+            }
+            yield { type: "text-delta", text: "parent ok" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const tools = new ToolRegistry();
+    for (const t of createBuiltinTools()) tools.register(t);
+    const sess = session();
+    sess.workspaceRoot = root;
+    sess.sandboxRoot = root;
+    const events = [];
+    for await (const e of runTurn({
+      session: sess,
+      userContent: "delegate write",
+      router,
+      tools,
+      permission: {
+        wait: async (requestId) => {
+          permissionWaits.push(requestId);
+          return true;
+        },
+      },
+    })) {
+      events.push(e);
+    }
+    expect(
+      events.some(
+        (e) =>
+          e.type === "tool.permission_required" &&
+          e.name === "write" &&
+          e.sessionId === sess.id,
+      ),
+    ).toBe(true);
+    expect(
+      events.some(
+        (e) =>
+          e.type === "session.status" &&
+          e.status === "awaiting_permission" &&
+          e.sessionId === sess.id,
+      ),
+    ).toBe(true);
+    expect(permissionWaits.length).toBeGreaterThanOrEqual(1);
+    expect(await Bun.file(join(root, "child.txt")).exists()).toBe(true);
+    expect(
+      events.some(
+        (e) => e.type === "message.delta" && e.delta === "child done",
+      ),
+    ).toBe(false);
+  });
+
+  test("yields budget.exceeded when maxTurns exceeded", async () => {
+    const router = createProviderRouter({ adapters: [createMockAdapter()] });
+    const sess = session();
+    const events = [];
+    for await (const event of runTurn({
+      session: sess,
+      userContent: "hi",
+      router,
+      tools: new ToolRegistry(),
+      maxTurns: 0,
+      ids: {
+        messageId: () => "msg_asst",
+        turnId: () => "turn_1",
+        toolCallId: () => "tc_1",
+        requestId: () => "req_1",
+      },
+    })) {
+      events.push(event);
+    }
+    expect(
+      events.some(
+        (e) => e.type === "budget.exceeded" && e.reason === "max_turns",
+      ),
+    ).toBe(true);
+    expect(events.at(-1)).toMatchObject({
+      type: "session.status",
+      status: "idle",
+    });
+  });
+
+  test("yields budget.exceeded when usageUsd exceeds maxUsdPerTask", async () => {
+    const router = createProviderRouter({ adapters: [createMockAdapter()] });
+    const sess = session();
+    sess.usageUsd = 2;
+    const events = [];
+    for await (const event of runTurn({
+      session: sess,
+      userContent: "hi",
+      router,
+      tools: new ToolRegistry(),
+      maxUsdPerTask: 1,
+      ids: {
+        messageId: () => "msg_asst",
+        turnId: () => "turn_1",
+        toolCallId: () => "tc_1",
+        requestId: () => "req_1",
+      },
+    })) {
+      events.push(event);
+    }
+    expect(
+      events.some(
+        (e) => e.type === "budget.exceeded" && e.reason === "max_usd",
+      ),
+    ).toBe(true);
+    expect(events.at(-1)).toMatchObject({
+      type: "session.status",
+      status: "idle",
     });
   });
 });

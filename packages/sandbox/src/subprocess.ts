@@ -1,10 +1,12 @@
+import type { SandboxAdapter } from "./adapter.ts";
+import { collectSpawnedOutput } from "./collect.ts";
+import { allowedContainerEnv, createContainerAdapter } from "./container.ts";
 import { inspectArgv } from "./denylist.ts";
 import { jailPath } from "./jail.ts";
-import { truncateUtf8 } from "./truncate.ts";
+import { createRemoteAdapter } from "./remote.ts";
 import type { SandboxConfig, ToolExecutionResult } from "./types.ts";
 
 const DENIED_EXIT_CODE = -100;
-const TIMED_OUT_EXIT_CODE = -101;
 
 export async function runSandboxed(opts: {
   argv: string[];
@@ -12,6 +14,8 @@ export async function runSandboxed(opts: {
   config: SandboxConfig;
   env?: Record<string, string>;
   shell?: boolean;
+  spawn?: typeof Bun.spawn;
+  remoteExec?: SandboxAdapter["exec"];
 }): Promise<ToolExecutionResult> {
   const startedAt = performance.now();
   const inspection = inspectArgv(opts.argv, opts.config.denylist, {
@@ -21,18 +25,49 @@ export async function runSandboxed(opts: {
     return deniedResult(inspection.reason ?? "command denied", startedAt);
   }
 
-  const jailed = await jailPath(opts.config.root, opts.cwd).catch(() => ({
-    ok: false as const,
-    reason: "path jail: sandbox root is unavailable",
-  }));
-  if (!jailed.ok) {
-    return deniedResult(jailed.reason, startedAt);
+  const skipJail = opts.config.mode === "remote";
+  let cwd = opts.cwd;
+  if (!skipJail) {
+    const jailed = await jailPath(opts.config.root, opts.cwd).catch(() => ({
+      ok: false as const,
+      reason: "path jail: sandbox root is unavailable",
+    }));
+    if (!jailed.ok) {
+      return deniedResult(jailed.reason, startedAt);
+    }
+    cwd = jailed.path;
+  }
+
+  const execOpts = {
+    argv: opts.argv,
+    cwd,
+    env: opts.env ?? {},
+    timeoutMs: opts.config.timeoutMs,
+    maxOutputBytes: opts.config.maxOutputBytes,
+  };
+
+  if (opts.config.mode === "remote") {
+    if (!opts.remoteExec) {
+      return deniedResult("remote adapter not configured", startedAt);
+    }
+    return createRemoteAdapter({ exec: opts.remoteExec }).exec(execOpts);
+  }
+
+  if (opts.config.mode === "container") {
+    return createContainerAdapter({
+      spawn: opts.spawn,
+      envAllowlist: opts.config.envAllowlist,
+      allowHosts: opts.config.network?.allowHosts,
+    }).exec({
+      ...execOpts,
+      env: allowedContainerEnv(opts.config.envAllowlist, opts.env),
+    });
   }
 
   let subprocess: Bun.Subprocess<"ignore", "pipe", "pipe">;
   try {
     subprocess = Bun.spawn(opts.argv, {
-      cwd: jailed.path,
+      cwd,
       detached: true,
       env: { ...globalThis.process.env, ...opts.env },
       stdin: "ignore",
@@ -52,9 +87,6 @@ export async function runSandboxed(opts: {
     };
   }
 
-  let timedOut = false;
-  let outputExceeded = false;
-  let remainingOutputBytes = opts.config.maxOutputBytes;
   let termination: Promise<void> | undefined;
   const terminateGroup = (): Promise<void> => {
     termination ??= (async () => {
@@ -71,70 +103,13 @@ export async function runSandboxed(opts: {
     })();
     return termination;
   };
-  const timer = setTimeout(() => {
-    timedOut = true;
-    void terminateGroup();
-  }, opts.config.timeoutMs);
 
-  const readCapped = async (
-    stream: ReadableStream<Uint8Array>,
-  ): Promise<Uint8Array[]> => {
-    const chunks: Uint8Array[] = [];
-    const reader = stream.getReader();
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) return chunks;
-        if (outputExceeded) {
-          await reader.cancel();
-          return chunks;
-        }
-        if (value.byteLength <= remainingOutputBytes) {
-          chunks.push(value);
-          remainingOutputBytes -= value.byteLength;
-          continue;
-        }
-        if (remainingOutputBytes > 0) {
-          chunks.push(value.subarray(0, remainingOutputBytes));
-          remainingOutputBytes = 0;
-        }
-        outputExceeded = true;
-        clearTimeout(timer);
-        await terminateGroup();
-        await reader.cancel();
-        return chunks;
-      }
-    } finally {
-      reader.releaseLock();
-    }
-  };
-
-  const [exitCode, stdoutChunks, stderrChunks] = await Promise.all([
-    subprocess.exited,
-    readCapped(subprocess.stdout),
-    readCapped(subprocess.stderr),
-  ]).finally(() => clearTimeout(timer));
-
-  const stdoutBytes = Buffer.concat(stdoutChunks);
-  const stderrBytes = Buffer.concat(stderrChunks);
-  const stdout = truncateUtf8(
-    stdoutBytes.toString("utf8"),
-    stdoutBytes.byteLength,
-  );
-  const stderr = truncateUtf8(
-    stderrBytes.toString("utf8"),
-    stderrBytes.byteLength,
-  );
-  return {
-    ok: !timedOut && exitCode === 0,
-    exitCode: timedOut ? TIMED_OUT_EXIT_CODE : exitCode,
-    stdout: stdout.text,
-    stderr: stderr.text,
-    truncated: outputExceeded || stdout.truncated || stderr.truncated,
-    timedOut,
-    denied: false,
-    durationMs: elapsed(startedAt),
-  };
+  return collectSpawnedOutput(subprocess, {
+    timeoutMs: opts.config.timeoutMs,
+    maxOutputBytes: opts.config.maxOutputBytes,
+    startedAt,
+    kill: terminateGroup,
+  });
 }
 
 function deniedResult(

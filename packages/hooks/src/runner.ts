@@ -15,6 +15,12 @@ const CANNOT_DENY = new Set<HookEvent>([
   "PostToolUse",
   "SessionEnd",
   "InstructionsLoaded",
+  "PermissionRequest",
+  "PermissionDenied",
+  "PostToolUseFailure",
+  "PostToolBatch",
+  "SubagentStart",
+  "SubagentStop",
 ]);
 
 export type RunHooksOpts = {

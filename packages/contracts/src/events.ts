@@ -110,6 +110,12 @@ export const skillsChangedEventSchema = z.object({
   active: z.array(z.string()),
 });
 
+export const budgetExceededEventSchema = z.object({
+  type: z.literal("budget.exceeded"),
+  sessionId: z.string(),
+  reason: z.enum(["max_turns", "max_usd"]),
+});
+
 export const zoxEventSchema = z.discriminatedUnion("type", [
   sessionStatusEventSchema,
   messageDeltaEventSchema,
@@ -124,6 +130,7 @@ export const zoxEventSchema = z.discriminatedUnion("type", [
   contextCompactedEventSchema,
   errorEventSchema,
   skillsChangedEventSchema,
+  budgetExceededEventSchema,
 ]);
 
 export type ZoxEvent = z.infer<typeof zoxEventSchema>;

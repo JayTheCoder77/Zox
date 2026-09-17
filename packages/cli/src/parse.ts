@@ -13,6 +13,7 @@ export const SLASH_NAMES = [
   "sandbox",
   "trace",
   "remember",
+  "revert",
   "exit",
 ] as const;
 
@@ -25,9 +26,13 @@ export type CliFlags = {
   url?: string;
   token?: string;
   noTui?: boolean;
-  sandbox?: "host" | "worktree";
+  sandbox?: "host" | "worktree" | "container" | "remote";
   port?: number;
   session?: string;
+  includeMemory?: boolean;
+  keepWorktree?: boolean;
+  autoApprove?: boolean;
+  maxTurns?: number;
 };
 
 export function parseSlash(
@@ -56,6 +61,23 @@ export function parseArgs(argv: string[]): {
 
     if (arg === "--no-tui") {
       flags.noTui = true;
+      continue;
+    }
+    if (arg === "--include-memory") {
+      flags.includeMemory = true;
+      continue;
+    }
+    if (arg === "--keep-worktree") {
+      flags.keepWorktree = true;
+      continue;
+    }
+    if (arg === "--auto-approve") {
+      flags.autoApprove = true;
+      continue;
+    }
+    if (arg === "--max-turns" && argv[i + 1]) {
+      const maxTurns = Number(argv[++i]);
+      if (!Number.isNaN(maxTurns)) flags.maxTurns = maxTurns;
       continue;
     }
 
@@ -90,7 +112,12 @@ export function parseArgs(argv: string[]): {
     }
     if (arg === "--sandbox" && argv[i + 1]) {
       const mode = argv[++i];
-      if (mode === "host" || mode === "worktree") {
+      if (
+        mode === "host" ||
+        mode === "worktree" ||
+        mode === "container" ||
+        mode === "remote"
+      ) {
         flags.sandbox = mode;
       }
       continue;
