@@ -899,7 +899,9 @@ describe("runTurn", () => {
     })) {
       /* drain */
     }
-    const failure = hookCalls.find((call) => call.event === "PostToolUseFailure");
+    const failure = hookCalls.find(
+      (call) => call.event === "PostToolUseFailure",
+    );
     expect(failure).toBeDefined();
     expect(failure?.payload).toMatchObject({
       matcher: "read",
@@ -1089,16 +1091,19 @@ describe("runTurn", () => {
     })) {
       events.push(e);
     }
-    const subagentHooks = hookCalls.filter((e) =>
-      e.startsWith("Subagent"),
-    );
+    const subagentHooks = hookCalls.filter((e) => e.startsWith("Subagent"));
     expect(subagentHooks).toEqual(["SubagentStart", "SubagentStop"]);
     expect(
-      events.some((e) => e.type === "tool.completed" && e.name === "task" && e.ok),
+      events.some(
+        (e) => e.type === "tool.completed" && e.name === "task" && e.ok,
+      ),
     ).toBe(true);
     expect(
       sess.messages.some(
-        (m) => m.role === "tool" && m.name === "task" && m.content === "investigated",
+        (m) =>
+          m.role === "tool" &&
+          m.name === "task" &&
+          m.content === "investigated",
       ),
     ).toBe(true);
     expect(
@@ -1107,9 +1112,7 @@ describe("runTurn", () => {
       ),
     ).toBe(false);
     expect(
-      events.some(
-        (e) => e.type === "message.completed" && e.content === "ok",
-      ),
+      events.some((e) => e.type === "message.completed" && e.content === "ok"),
     ).toBe(true);
     expect(sess.usage).toEqual({ inputTokens: 8, outputTokens: 5 });
   });

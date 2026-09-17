@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SCHEMA_VERSION, migrate } from "@zox/session";
+import { migrate, SCHEMA_VERSION } from "@zox/session";
 import { indexWorkspace, searchCode } from "./code-index.ts";
 
 function memoryDb(): Database {

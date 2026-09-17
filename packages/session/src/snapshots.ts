@@ -1,4 +1,4 @@
-import { Database } from "bun:sqlite";
+import type { Database } from "bun:sqlite";
 import { unlink } from "node:fs/promises";
 import { createId } from "@zox/core";
 import { jailPath } from "@zox/sandbox";

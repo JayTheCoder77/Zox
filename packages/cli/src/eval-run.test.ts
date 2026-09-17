@@ -3,11 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { evalTaskSchema } from "@zox/contracts";
-import {
-  formatEvalAggregate,
-  runEvalSuite,
-  runEvalTask,
-} from "./eval-run.ts";
+import { formatEvalAggregate, runEvalSuite, runEvalTask } from "./eval-run.ts";
 
 const resultsDir = resolve("eval/results");
 const echoResultPath = join(resultsDir, "echo.json");
@@ -58,7 +54,10 @@ describe("runEvalTask", () => {
 
   test("fails when expected file content is missing", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "zox-eval-files-"));
-    await writeFile(join(workspace, "add.ts"), "export const add = (a, b) => a - b;\n");
+    await writeFile(
+      join(workspace, "add.ts"),
+      "export const add = (a, b) => a - b;\n",
+    );
     const summary = await runEvalTask({
       id: "missing-fix",
       prompt: "ping",

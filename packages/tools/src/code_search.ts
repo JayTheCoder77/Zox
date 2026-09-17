@@ -43,10 +43,7 @@ export const codeSearchTool: ZoxTool = {
       limit: typeof limit === "number" ? limit : undefined,
     });
     const body = hits
-      .map(
-        (hit) =>
-          `${hit.path}:${hit.startLine}\n${hit.text}`,
-      )
+      .map((hit) => `${hit.path}:${hit.startLine}\n${hit.text}`)
       .join("\n\n");
     return {
       ok: true,

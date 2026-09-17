@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { SessionEventBus } from "./bus.ts";
 import {
+  type SessionWsData,
   sessionWebSocket,
   sessionWebSocketHandlers,
 } from "./ws.ts";
@@ -26,11 +27,9 @@ function nextMessage(ws: WebSocket): Promise<string> {
       },
       { once: true },
     );
-    ws.addEventListener(
-      "error",
-      () => reject(new Error("ws message error")),
-      { once: true },
-    );
+    ws.addEventListener("error", () => reject(new Error("ws message error")), {
+      once: true,
+    });
   });
 }
 
@@ -50,7 +49,7 @@ describe("sessionWebSocket", () => {
     });
     const res = handle(
       new Request("http://127.0.0.1/sessions/sess-1/ws"),
-      {} as Bun.Server,
+      {} as Bun.Server<SessionWsData>,
     );
     expect(res?.status).toBe(401);
   });
@@ -64,7 +63,7 @@ describe("sessionWebSocket", () => {
     });
     const res = handle(
       new Request("http://127.0.0.1/sessions/missing/ws?token=ws-test-token"),
-      {} as Bun.Server,
+      {} as Bun.Server<SessionWsData>,
     );
     expect(res?.status).toBe(404);
   });
@@ -110,7 +109,10 @@ describe("sessionWebSocket", () => {
       toolCallId: "tc-1",
       name: "write",
     });
-    const payload = JSON.parse(await got) as { type: string; requestId: string };
+    const payload = JSON.parse(await got) as {
+      type: string;
+      requestId: string;
+    };
     expect(payload.type).toBe("tool.permission_required");
     expect(payload.requestId).toBe("req-1");
 

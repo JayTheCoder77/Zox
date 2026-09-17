@@ -28,9 +28,9 @@ describe("code_search tool", () => {
       required: ["query"],
       additionalProperties: false,
     });
-    expect(createBuiltinTools().some((tool) => tool.name === "code_search")).toBe(
-      true,
-    );
+    expect(
+      createBuiltinTools().some((tool) => tool.name === "code_search"),
+    ).toBe(true);
   });
 
   test("indexes on first search when chunks are empty", async () => {

@@ -163,10 +163,7 @@ async function* runTurnBody(opts: {
   };
 }): AsyncIterable<ZoxEvent> {
   opts.session.turnCount = (opts.session.turnCount ?? 0) + 1;
-  if (
-    opts.maxTurns !== undefined &&
-    opts.session.turnCount > opts.maxTurns
-  ) {
+  if (opts.maxTurns !== undefined && opts.session.turnCount > opts.maxTurns) {
     yield {
       type: "budget.exceeded",
       sessionId: opts.session.id,

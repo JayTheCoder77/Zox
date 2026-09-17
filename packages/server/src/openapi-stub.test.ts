@@ -52,7 +52,7 @@ describe("openapi stub", () => {
     for (const path of paths) {
       expect(yaml).toContain(`${path}:`);
     }
-    expect(yaml).toMatch(/\n  \/sessions:\n    get:/);
+    expect(yaml).toMatch(/\n {2}\/sessions:\n {4}get:/);
     expect(yaml).toContain("SessionListResponse");
   });
 

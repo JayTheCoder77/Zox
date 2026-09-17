@@ -156,7 +156,10 @@ describe("dispatchCommand plugin slash", () => {
       "Explain $ARGUMENTS in one sentence.",
     );
     const denyScript = join(root, "deny.sh");
-    await writeFile(denyScript, `#!/bin/sh\nprintf '{"decision":"deny","reason":"blocked"}\\n'\n`);
+    await writeFile(
+      denyScript,
+      `#!/bin/sh\nprintf '{"decision":"deny","reason":"blocked"}\\n'\n`,
+    );
     await chmod(denyScript, 0o755);
     const server = app({
       hooks: createHookRunner({

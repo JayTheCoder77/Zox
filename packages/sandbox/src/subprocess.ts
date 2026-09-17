@@ -1,9 +1,6 @@
 import type { SandboxAdapter } from "./adapter.ts";
 import { collectSpawnedOutput } from "./collect.ts";
-import {
-  allowedContainerEnv,
-  createContainerAdapter,
-} from "./container.ts";
+import { allowedContainerEnv, createContainerAdapter } from "./container.ts";
 import { inspectArgv } from "./denylist.ts";
 import { jailPath } from "./jail.ts";
 import { createRemoteAdapter } from "./remote.ts";

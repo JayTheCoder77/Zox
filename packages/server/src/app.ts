@@ -53,7 +53,7 @@ import { bearerAuth } from "./auth.ts";
 import { SessionEventBus } from "./bus.ts";
 import { exportSession } from "./export-session.ts";
 import { resolveCustomSlash } from "./slash-plugins.ts";
-import { sessionWebSocket } from "./ws.ts";
+import { type SessionWsData, sessionWebSocket } from "./ws.ts";
 
 export type AppRouter = ReturnType<typeof createProviderRouter>;
 
@@ -161,7 +161,7 @@ export function createApp(opts: {
 }): Hono & {
   handleWebSocket: (
     request: Request,
-    server: Bun.Server,
+    server: Bun.Server<SessionWsData>,
   ) => Response | undefined;
 } {
   const bus = new SessionEventBus();

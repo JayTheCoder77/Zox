@@ -259,9 +259,7 @@ export function createZoxClient(opts: {
         return res.json();
       },
       async export(opts?: { includeMemory?: boolean }) {
-        const params = opts?.includeMemory
-          ? "?includeMemory=true"
-          : "";
+        const params = opts?.includeMemory ? "?includeMemory=true" : "";
         const res = await fetch(
           `${baseUrl}/sessions/${sessionId}/export${params}`,
           { headers: authOnly },
@@ -287,9 +285,7 @@ export function createZoxClient(opts: {
         const res = await fetch(`${baseUrl}/sessions/${sessionId}/revert`, {
           method: "POST",
           headers,
-          body: JSON.stringify(
-            snapshotId === undefined ? {} : { snapshotId },
-          ),
+          body: JSON.stringify(snapshotId === undefined ? {} : { snapshotId }),
         });
         if (!res.ok) {
           throw new Error(`revert failed: ${res.status}`);

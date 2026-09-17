@@ -1,8 +1,8 @@
 import { mkdir, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { jailPath } from "@zox/sandbox";
-import description from "./descriptions/write.txt" with { type: "text" };
 import { appendAfterMutate } from "./after-mutate.ts";
+import description from "./descriptions/write.txt" with { type: "text" };
 import { toolContent, toolDenied, toolError, type ZoxTool } from "./types.ts";
 
 export const writeTool: ZoxTool = {

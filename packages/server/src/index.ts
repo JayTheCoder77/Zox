@@ -26,9 +26,9 @@ import { sessionWebSocketHandlers } from "./ws.ts";
 export type { AppConfig, AppRouter } from "./app.ts";
 export { createApp } from "./app.ts";
 export {
+  type SessionWsData,
   sessionWebSocket,
   sessionWebSocketHandlers,
-  type SessionWsData,
   type WsClientMessage,
 } from "./ws.ts";
 
@@ -140,7 +140,10 @@ export async function listen(opts?: {
     port,
     fetch(req, bunServer) {
       const url = new URL(req.url);
-      if (req.method === "GET" && /^\/sessions\/[^/]+\/ws$/.test(url.pathname)) {
+      if (
+        req.method === "GET" &&
+        /^\/sessions\/[^/]+\/ws$/.test(url.pathname)
+      ) {
         bunServer.timeout(req, 0);
         const res = app.handleWebSocket(req, bunServer);
         if (res === undefined) return;

@@ -67,9 +67,7 @@ export const sessionWebSocketHandlers = {
   },
   message(ws: ServerWebSocket<SessionWsData>, message: string | Buffer) {
     const text =
-      typeof message === "string"
-        ? message
-        : new TextDecoder().decode(message);
+      typeof message === "string" ? message : new TextDecoder().decode(message);
     const parsed = parseClientMessage(text);
     if (!parsed) return;
     ws.data.respondPermission(
@@ -92,7 +90,10 @@ export function sessionWebSocket(opts: {
     requestId: string,
     approved: boolean,
   ) => void;
-}): (request: Request, server: Bun.Server) => Response | undefined {
+}): (
+  request: Request,
+  server: Bun.Server<SessionWsData>,
+) => Response | undefined {
   return (request, server) => {
     const url = new URL(request.url);
     const match = url.pathname.match(/^\/sessions\/([^/]+)\/ws$/);

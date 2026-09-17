@@ -47,8 +47,12 @@ export async function runAgentRun(opts: {
 
     const run = session.send(opts.task);
 
-    let lastStatus: "idle" | "running" | "error" | "compacting" | "awaiting_permission" =
-      "idle";
+    let lastStatus:
+      | "idle"
+      | "running"
+      | "error"
+      | "compacting"
+      | "awaiting_permission" = "idle";
     let hadError = false;
     for await (const event of run.events()) {
       if (event.type === "session.status") {

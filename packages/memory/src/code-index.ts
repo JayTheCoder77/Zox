@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import type { Dirent } from "node:fs";
 import { readdir, realpath } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 
@@ -106,10 +107,10 @@ async function resolvePath(path: string): Promise<string> {
 }
 
 async function gitWorkTree(root: string): Promise<string | undefined> {
-  const proc = Bun.spawn(
-    ["git", "-C", root, "rev-parse", "--show-toplevel"],
-    { stdout: "pipe", stderr: "pipe" },
-  );
+  const proc = Bun.spawn(["git", "-C", root, "rev-parse", "--show-toplevel"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   const [stdout, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     proc.exited,
@@ -138,7 +139,7 @@ async function gitLsFiles(root: string): Promise<string[]> {
 async function walkFiles(root: string): Promise<string[]> {
   const out: string[] = [];
   async function rec(dir: string): Promise<void> {
-    let entries;
+    let entries: Dirent[];
     try {
       entries = await readdir(dir, { withFileTypes: true });
     } catch {
@@ -164,5 +165,7 @@ function shouldSkipPath(abs: string): boolean {
 
 function isInside(root: string, abs: string): boolean {
   const rel = relative(root, abs);
-  return rel === "" || (!rel.startsWith("..") && !join(rel).startsWith(`..${sep}`));
+  return (
+    rel === "" || (!rel.startsWith("..") && !join(rel).startsWith(`..${sep}`))
+  );
 }

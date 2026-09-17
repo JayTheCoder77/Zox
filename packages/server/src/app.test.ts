@@ -1224,14 +1224,11 @@ describe("createApp", () => {
     if ("skipped" in snap) throw new Error("should record");
     await Bun.write(join(root, "a.txt"), "new");
 
-    const missing = await server.request(
-      `/sessions/${session.id}/revert`,
-      {
-        method: "POST",
-        headers: { ...auth, "Content-Type": "application/json" },
-        body: JSON.stringify({ snapshotId: "snap_missing" }),
-      },
-    );
+    const missing = await server.request(`/sessions/${session.id}/revert`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ snapshotId: "snap_missing" }),
+    });
     expect(missing.status).toBe(404);
 
     const restored = await server.request(`/sessions/${session.id}/revert`, {
@@ -1256,11 +1253,14 @@ describe("createApp", () => {
     expect(latest.status).toBe(200);
     expect(await Bun.file(join(root, "a.txt")).text()).toBe("old");
 
-    const viaCommand = await server.request(`/sessions/${session.id}/commands`, {
-      method: "POST",
-      headers: { ...auth, "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "help" }),
-    });
+    const viaCommand = await server.request(
+      `/sessions/${session.id}/commands`,
+      {
+        method: "POST",
+        headers: { ...auth, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "help" }),
+      },
+    );
     const helpJson = (await viaCommand.json()) as { commands: string[] };
     expect(helpJson.commands).toContain("revert");
 

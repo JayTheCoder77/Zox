@@ -1,7 +1,4 @@
-import {
-  sessionExportSchema,
-  type SessionExport,
-} from "@zox/contracts";
+import { type SessionExport, sessionExportSchema } from "@zox/contracts";
 import type { StoredSession } from "@zox/core";
 import { redactSecrets } from "./redact.ts";
 

@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { createApp } from "@zox/server";
 import { MemorySessionStore } from "../../core/src/store.ts";
-import { createMockAdapter, createProviderRouter } from "../../providers/src/index.ts";
+import {
+  createMockAdapter,
+  createProviderRouter,
+} from "../../providers/src/index.ts";
 
 const stop = mock(() => {});
 
@@ -87,7 +90,9 @@ describe("runEmbed", () => {
     try {
       const { createZoxClient } = await import("@zox/sdk");
       const client = createZoxClient({ baseUrl, token });
-      const created = await client.sessions.create({ workspaceRoot: process.cwd() });
+      const created = await client.sessions.create({
+        workspaceRoot: process.cwd(),
+      });
       await created.close();
 
       await runEmbed({

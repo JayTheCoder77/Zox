@@ -16,7 +16,10 @@ export const taskTool: ZoxTool = {
   },
   async execute(args, ctx) {
     if (!ctx.runSubagent || !ctx.parentSession) {
-      return toolError("Subagent runtime not available", ctx.maxToolOutputChars);
+      return toolError(
+        "Subagent runtime not available",
+        ctx.maxToolOutputChars,
+      );
     }
     const prompt = args.prompt;
     if (typeof prompt !== "string" || prompt.length === 0) {

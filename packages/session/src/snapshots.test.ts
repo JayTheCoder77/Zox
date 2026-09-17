@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SCHEMA_VERSION, migrate } from "./schema.ts";
+import { migrate, SCHEMA_VERSION } from "./schema.ts";
 import { recordFileSnapshot, restoreSnapshot } from "./snapshots.ts";
 
 function seedSession(db: Database, id: string): void {
@@ -12,7 +12,16 @@ function seedSession(db: Database, id: string): void {
       id, workspace_root, agent, model, status, sandbox_root, sandbox_mode,
       usage_input_tokens, usage_output_tokens, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`,
-    [id, "/tmp/ws", "build", "mock/echo", "idle", "/tmp/ws", "host", Date.now()],
+    [
+      id,
+      "/tmp/ws",
+      "build",
+      "mock/echo",
+      "idle",
+      "/tmp/ws",
+      "host",
+      Date.now(),
+    ],
   );
 }
 

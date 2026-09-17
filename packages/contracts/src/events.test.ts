@@ -38,7 +38,10 @@ describe("zoxEventSchema", () => {
       sessionId: "sess_1",
       reason: "max_turns",
     });
-    expect(event).toMatchObject({ type: "budget.exceeded", reason: "max_turns" });
+    expect(event).toMatchObject({
+      type: "budget.exceeded",
+      reason: "max_turns",
+    });
   });
 
   test("parses skills.changed", () => {

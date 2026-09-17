@@ -77,7 +77,7 @@ describe("createContainerAdapter", () => {
 
   test("returns docker unavailable when docker is missing", async () => {
     const adapter = createContainerAdapter({
-      spawn: ((cmd: string[]) => {
+      spawn: ((_cmd: string[]) => {
         const error = new Error("not found") as Error & { code?: string };
         error.code = "ENOENT";
         throw error;

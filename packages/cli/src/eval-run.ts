@@ -3,13 +3,13 @@ import { cp, mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
-  evalTaskSchema,
   type EvalRunSummary,
   type EvalTask,
+  evalTaskSchema,
 } from "@zox/contracts";
-import { writeJsonFile } from "../../observability/src/json.ts";
 import { createZoxClient } from "@zox/sdk";
 import { listen } from "@zox/server";
+import { writeJsonFile } from "../../observability/src/json.ts";
 import type { CliFlags } from "./parse.ts";
 
 export type { EvalRunSummary, EvalTask };
@@ -84,7 +84,8 @@ async function runWithListen(
   model: string,
   flags: CliFlags,
 ): Promise<EvalRunSummary> {
-  const token = flags.token ?? process.env.ZOXX_SERVER_TOKEN ?? crypto.randomUUID();
+  const token =
+    flags.token ?? process.env.ZOXX_SERVER_TOKEN ?? crypto.randomUUID();
   const server = await listen({
     hostname: "127.0.0.1",
     port: flags.port ?? 0,
