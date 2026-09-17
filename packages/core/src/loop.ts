@@ -1,4 +1,12 @@
-import { assembleProviderMessages, estimateSession } from "@zox/context";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import {
+  assembleProviderMessages,
+  buildEnvironmentPrompt,
+  estimateSession,
+  loadProjectInstructions,
+  selectFamilyPrompt,
+} from "@zox/context";
 import type { ZoxEvent } from "@zox/contracts";
 import { parsePlan } from "@zox/memory";
 import type {
@@ -85,6 +93,7 @@ export async function* runTurn(opts: {
   webfetchMaxBytes?: number;
   memoryDb?: import("bun:sqlite").Database;
   skillsConfig?: CatalogOptions;
+  instructionFiles?: string[];
   preCompactTokenThreshold?: number;
   ids?: {
     messageId(): string;
@@ -127,6 +136,7 @@ async function* runTurnBody(opts: {
   webfetchMaxBytes?: number;
   memoryDb?: import("bun:sqlite").Database;
   skillsConfig?: CatalogOptions;
+  instructionFiles?: string[];
   preCompactTokenThreshold?: number;
   ids?: {
     messageId(): string;
@@ -177,7 +187,11 @@ async function* runTurnBody(opts: {
     }
   }
 
-  const estimated = estimateTurnTokens(opts);
+  const promptLayers = await resolvePromptLayers(
+    opts.session,
+    opts.instructionFiles,
+  );
+  const estimated = estimateTurnTokens({ ...opts, promptLayers });
   const hardOverflow = isHardOverflow(
     estimated,
     opts.context,
@@ -278,6 +292,7 @@ async function* runTurnBody(opts: {
         observability: opts.observability,
         skillLoadPaths: opts.skillLoadPaths,
         skillsConfig: opts.skillsConfig,
+        promptLayers,
       });
 
       if (round.kind === "error") {
@@ -413,10 +428,15 @@ function assembleSessionMessages(
   session: StoredSession,
   skillLoadPaths?: string[],
   skillsConfig?: CatalogOptions,
+  promptLayers?: PromptLayers,
 ) {
   return assembleProviderMessages({
     messages: session.messages,
     compactions: session.compactions,
+    familyPrompt: promptLayers?.familyPrompt,
+    agentOverlay: promptLayers?.agentOverlay,
+    environment: promptLayers?.environment,
+    projectInstructions: promptLayers?.projectInstructions,
     skillsCatalog: buildSkillsCatalog(
       discoverSkills({
         workspaceRoot: session.workspaceRoot,
@@ -430,16 +450,49 @@ function assembleSessionMessages(
   });
 }
 
+type PromptLayers = {
+  familyPrompt: string;
+  agentOverlay: string;
+  environment: string;
+  projectInstructions: string;
+};
+
+async function resolvePromptLayers(
+  session: StoredSession,
+  instructionFiles?: string[],
+): Promise<PromptLayers> {
+  const profile = getAgentProfile(session.agent);
+  const projectInstructions = await loadProjectInstructions({
+    workspaceRoot: session.workspaceRoot,
+    extraFiles: instructionFiles,
+  });
+  return {
+    familyPrompt: selectFamilyPrompt(session.model),
+    agentOverlay: profile.systemOverlay,
+    environment: buildEnvironmentPrompt({
+      model: session.model,
+      workingDirectory: session.sandboxRoot,
+      workspaceRoot: session.workspaceRoot,
+      isGitRepo: existsSync(join(session.workspaceRoot, ".git")),
+      platform: process.platform,
+      date: new Date().toDateString(),
+    }),
+    projectInstructions,
+  };
+}
+
 function estimateTurnTokens(opts: {
   session: StoredSession;
   context?: ContextEngine;
   skillLoadPaths?: string[];
   skillsConfig?: CatalogOptions;
+  promptLayers?: PromptLayers;
 }): number {
   const assembled = assembleSessionMessages(
     opts.session,
     opts.skillLoadPaths,
     opts.skillsConfig,
+    opts.promptLayers,
   );
   return opts.context?.estimateTokens
     ? opts.context.estimateTokens(
@@ -525,6 +578,7 @@ async function* consumeModelRound(opts: {
   observability?: TurnObservability;
   skillLoadPaths?: string[];
   skillsConfig?: CatalogOptions;
+  promptLayers?: PromptLayers;
 }): AsyncGenerator<ZoxEvent, ModelRound> {
   let text = "";
   let inputTokens = 0;
@@ -541,6 +595,7 @@ async function* consumeModelRound(opts: {
         opts.session,
         opts.skillLoadPaths,
         opts.skillsConfig,
+        opts.promptLayers,
       ),
     ),
     tools: opts.tools,

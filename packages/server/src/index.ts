@@ -105,6 +105,7 @@ export async function listen(opts?: {
       tools: zoxConfig.tools,
       budget: zoxConfig.budget,
       context: zoxConfig.context,
+      instructions: zoxConfig.instructions,
       hooks: hookFiles[0],
       worktreeCleanup:
         zoxConfig.sandbox?.worktree?.cleanup ??

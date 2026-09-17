@@ -10,6 +10,10 @@ export type ProviderMessage = {
 export function assembleProviderMessages<T extends ProviderMessage>(session: {
   messages: T[];
   compactions?: CompactResult[];
+  familyPrompt?: string;
+  agentOverlay?: string;
+  environment?: string;
+  projectInstructions?: string;
   skillsCatalog?: string;
   skillBodies?: string[];
   priorStateMarkdown?: string;
@@ -17,6 +21,10 @@ export function assembleProviderMessages<T extends ProviderMessage>(session: {
 }): T[] {
   const assembled = assembleHistory(session);
   const prefixes: T[] = [];
+  pushSystem(prefixes, "prompt:family", session.familyPrompt);
+  pushSystem(prefixes, "prompt:agent", session.agentOverlay);
+  pushSystem(prefixes, "prompt:env", session.environment);
+  pushSystem(prefixes, "prompt:project", session.projectInstructions);
   if (session.systemNotes?.length) {
     prefixes.push({
       id: "hook:notes",
@@ -47,6 +55,15 @@ export function assembleProviderMessages<T extends ProviderMessage>(session: {
   }
   if (prefixes.length === 0) return assembled;
   return [...prefixes, ...assembled];
+}
+
+function pushSystem<T extends ProviderMessage>(
+  prefixes: T[],
+  id: string,
+  content?: string,
+): void {
+  if (!content?.trim()) return;
+  prefixes.push({ id, role: "system", content } as T);
 }
 
 function assembleHistory<T extends ProviderMessage>(session: {

@@ -54,6 +54,13 @@ describe("zoxConfigSchema", () => {
     expect(parsed.tools?.webfetch?.allowedHosts).toEqual(["example.com"]);
   });
 
+  test("parses instructions.files", () => {
+    const parsed = zoxConfigSchema.parse({
+      instructions: { files: ["docs/RULES.md"] },
+    });
+    expect(parsed.instructions?.files).toEqual(["docs/RULES.md"]);
+  });
+
   test("parses observability otlp endpoint, headers, enabled, and serviceName", () => {
     const parsed = zoxConfigSchema.parse({
       observability: {
