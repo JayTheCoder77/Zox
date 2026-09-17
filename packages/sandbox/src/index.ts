@@ -5,6 +5,8 @@ export {
   type DenylistConfig,
   inspectArgv,
   inspectCommand,
+  looksLikePath,
+  tokenizeCommand,
 } from "./denylist.ts";
 export { type JailResult, jailPath } from "./jail.ts";
 export { createRemoteAdapter } from "./remote.ts";

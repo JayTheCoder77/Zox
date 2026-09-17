@@ -41,4 +41,10 @@ describe("inspectCommand", () => {
   test("allows a command with a safe first token", () => {
     expect(inspectCommand("echo rm", defaults).denied).toBe(false);
   });
+
+  test("denies python -c one-liners in a shell string", () => {
+    const result = inspectCommand('python -c "print(1)"', defaults);
+    expect(result.denied).toBe(true);
+    expect(result.reason).toMatch(/interpreter/i);
+  });
 });

@@ -130,4 +130,22 @@ describe("compactSessionTurn", () => {
     expect(existsSync(autoFile)).toBe(true);
     expect(existsSync(manualFile)).toBe(false);
   });
+
+  test("stores active skill names in priorStateMarkdown", async () => {
+    const sess = session([
+      { id: "m1", role: "user", content: "a" },
+      { id: "m2", role: "assistant", content: "b" },
+      { id: "m3", role: "user", content: "c" },
+      { id: "m4", role: "user", content: "last" },
+    ]);
+    sess.activeSkills = [{ name: "commit-helper", body: "be conventional" }];
+    for await (const _ of compactSessionTurn({
+      session: sess,
+      summarize: async () => "summary without skill names",
+    })) {
+      /* drain */
+    }
+    expect(sess.priorStateMarkdown).toContain("Active skills:");
+    expect(sess.priorStateMarkdown).toContain("commit-helper");
+  });
 });

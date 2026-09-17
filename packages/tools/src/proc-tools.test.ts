@@ -59,6 +59,26 @@ describe("subprocess tools", () => {
     expect(denied.denied).toBe(true);
   });
 
+  test("bash denies interpreter one-liners", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-bash-py-"));
+    const tools = registryWithBuiltins();
+    const denied = await requiredTool(tools, "bash").execute(
+      { command: "python -c 'print(1)'" },
+      ctx(root),
+    );
+    expect(denied.denied).toBe(true);
+  });
+
+  test("bash denies path-like arguments outside the sandbox", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-bash-path-"));
+    const tools = registryWithBuiltins();
+    const denied = await requiredTool(tools, "bash").execute(
+      { command: "cat /etc/passwd" },
+      ctx(root),
+    );
+    expect(denied.denied).toBe(true);
+  });
+
   test("glob and ls see written files; grep finds a line", async () => {
     const root = await mkdtemp(join(tmpdir(), "zox-glob-"));
     await mkdir(join(root, "src"), { recursive: true });

@@ -1355,4 +1355,80 @@ describe("createApp", () => {
     });
     expect(res.status).toBe(404);
   });
+
+  test("autoLoad failures surface once in systemNotes", async () => {
+    let captured: Array<{ role: string; content: string }> = [];
+    const tools = new ToolRegistry();
+    for (const tool of createBuiltinTools()) tools.register(tool);
+    const server = createApp({
+      token,
+      store: new MemorySessionStore(),
+      tools,
+      router: createProviderRouter({
+        adapters: [
+          createMockAdapter({
+            async *script(params) {
+              captured = params.messages;
+              yield { type: "text-delta", text: "ok" };
+              yield { type: "done" };
+            },
+          }),
+        ],
+      }),
+      config: {
+        sandbox: { mode: "host" },
+        skills: { autoLoad: ["does-not-exist"] },
+      },
+    });
+    const session = await createSession(server);
+    const eventsRes = await server.request(`/sessions/${session.id}/events`, {
+      headers: auth,
+    });
+    const send = server.request(`/sessions/${session.id}/messages`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "ping" }),
+    });
+    const streamed = await readSseUntil(eventsRes, (body) =>
+      body.includes("message.completed"),
+    );
+    await send;
+    await streamed.drain();
+    const notes = captured
+      .filter((m) => m.role === "system")
+      .map((m) => m.content)
+      .join("\n");
+    expect(notes).toMatch(/does-not-exist/);
+    expect(notes.toLowerCase()).toMatch(/skill/);
+  });
+
+  test("GET /hooks redacts http hooks to the url path", async () => {
+    const server = app({
+      config: {
+        sandbox: { mode: "host" },
+        hooks: {
+          zoxHooksVersion: 1,
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: "bash",
+                type: "http",
+                url: "https://hooks.example/zox?token=secret",
+              },
+            ],
+          },
+        },
+      },
+    });
+    const res = await server.request("/hooks", { headers: auth });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as {
+      hooks: Record<string, Array<{ matcher: string; command: string }>>;
+    };
+    expect(json.hooks.PreToolUse?.[0]?.matcher).toBe("bash");
+    expect(json.hooks.PreToolUse?.[0]?.command).toBe(
+      "https://hooks.example/zox",
+    );
+    expect(JSON.stringify(json)).not.toContain("secret");
+  });
 });

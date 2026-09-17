@@ -47,6 +47,27 @@ export function inspectCommand(
   command: string,
   denylist: DenylistConfig,
 ): { denied: boolean; reason?: string } {
-  const executable = command.trim().split(/\s+/, 1)[0] ?? "";
-  return inspectArgv([executable], denylist);
+  const tokens = tokenizeCommand(command);
+  if (tokens.length === 0) return { denied: false };
+  return inspectArgv(tokens, denylist);
+}
+
+export function tokenizeCommand(command: string): string[] {
+  return command
+    .trim()
+    .split(/\s+/)
+    .map((token) => token.replace(/^['"]|['"]$/g, ""))
+    .filter(Boolean);
+}
+
+export function looksLikePath(token: string): boolean {
+  if (!token || token.startsWith("-")) return false;
+  return (
+    token.startsWith("/") ||
+    token.startsWith("./") ||
+    token.startsWith("../") ||
+    token.startsWith("~/") ||
+    token.includes("..") ||
+    token.includes("/")
+  );
 }

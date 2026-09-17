@@ -819,7 +819,10 @@ export function createApp(opts: {
       if (!entries) continue;
       hooks[event] = entries.map((entry) => ({
         matcher: entry.matcher,
-        command: commandPathOnly(entry.command ?? ""),
+        command:
+          entry.type === "http"
+            ? redactHookUrl(entry.url ?? "")
+            : commandPathOnly(entry.command ?? ""),
       }));
     }
     return c.json({ hooks });
@@ -1401,6 +1404,18 @@ function redactValue(value: unknown): unknown {
   return out;
 }
 
+function redactHookUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.search = "";
+    parsed.hash = "";
+    const path = parsed.pathname === "/" ? "" : parsed.pathname;
+    return `${parsed.origin}${path}`;
+  } catch {
+    return commandPathOnly(url.split("?")[0] ?? url);
+  }
+}
+
 function commandPathOnly(command: string): string {
   const parts = command.trim().split(/\s+/);
   const pathLike =
@@ -1439,7 +1454,13 @@ function loadAutoSkills(
       workspaceRoot: session.workspaceRoot,
       loadPaths: skills?.loadPaths,
     });
-    if (!skill) continue;
+    if (!skill) {
+      const note = `Skill autoLoad failed: ${name} was not found.`;
+      if (!session.systemNotes?.includes(note)) {
+        session.systemNotes = [...(session.systemNotes ?? []), note];
+      }
+      continue;
+    }
     session.activeSkills = activateSkill(session.activeSkills ?? [], {
       name: skill.name,
       body: skill.body,

@@ -1,7 +1,10 @@
 import {
   DEFAULT_SANDBOX_CONFIG,
   inspectCommand,
+  jailPath,
+  looksLikePath,
   runSandboxed,
+  tokenizeCommand,
 } from "@zox/sandbox";
 import description from "./descriptions/bash.txt" with { type: "text" };
 import {
@@ -29,8 +32,10 @@ export const bashTool: ZoxTool = {
     }
 
     for (const segment of args.command.split(/;|&&|\|\||\||\n/)) {
+      const trimmed = segment.trim();
+      if (!trimmed) continue;
       const inspection = inspectCommand(
-        segment.trim(),
+        trimmed,
         DEFAULT_SANDBOX_CONFIG.denylist,
       );
       if (inspection.denied) {
@@ -38,6 +43,13 @@ export const bashTool: ZoxTool = {
           inspection.reason ?? "Command denied",
           ctx.maxToolOutputChars,
         );
+      }
+      for (const token of tokenizeCommand(trimmed)) {
+        if (!looksLikePath(token)) continue;
+        const jailed = await jailPath(ctx.sandboxRoot, token);
+        if (!jailed.ok) {
+          return toolDenied(jailed.reason, ctx.maxToolOutputChars);
+        }
       }
     }
 
