@@ -3,7 +3,19 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { evalTaskSchema } from "@zox/contracts";
-import { formatEvalAggregate, runEvalSuite, runEvalTask } from "./eval-run.ts";
+import {
+  assertLiveEvalReady,
+  DEFAULT_EVAL_TASKS_DIR,
+  DEFAULT_LIVE_EVAL_MAX_TURNS,
+  evalMaxTurns,
+  evalSandboxMode,
+  failedEvalSummary,
+  formatEvalAggregate,
+  isLiveEvalDir,
+  runEvalSuite,
+  runEvalTask,
+  withEvalTimeout,
+} from "./eval-run.ts";
 
 const resultsDir = resolve("eval/results");
 const echoResultPath = join(resultsDir, "echo.json");
@@ -20,6 +32,21 @@ describe("evalTaskSchema", () => {
       expect: { stdoutIncludes: "ping" },
     });
     expect(task.model).toBe("mock/echo");
+  });
+
+  test("parses live yaml fixtures from eval/tasks/live", async () => {
+    const dir = resolve("eval/tasks/live");
+    const names = [
+      "bash-ls.yaml",
+      "edit-add.yaml",
+      "grep-glob.yaml",
+      "write-module.yaml",
+    ];
+    for (const name of names) {
+      const raw = await readFile(join(dir, name), "utf8");
+      const task = evalTaskSchema.parse(Bun.YAML.parse(raw));
+      expect(task.expect.files?.length).toBeGreaterThan(0);
+    }
   });
 });
 
@@ -79,7 +106,127 @@ describe("formatEvalAggregate", () => {
   });
 });
 
+describe("eval task dirs", () => {
+  test("defaults the suite to eval/tasks/mock", () => {
+    expect(DEFAULT_EVAL_TASKS_DIR).toBe("eval/tasks/mock");
+  });
+
+  test("isLiveEvalDir is true only for eval/tasks/live", () => {
+    expect(isLiveEvalDir("eval/tasks/live")).toBe(true);
+    expect(isLiveEvalDir(resolve("eval/tasks/live"))).toBe(true);
+    expect(isLiveEvalDir("eval/tasks/mock")).toBe(false);
+    expect(isLiveEvalDir("/tmp/eval/tasks/live")).toBe(true);
+  });
+});
+
+describe("assertLiveEvalReady", () => {
+  test("does nothing for mock dirs", () => {
+    expect(() => assertLiveEvalReady("eval/tasks/mock")).not.toThrow();
+  });
+
+  test("requires --model for live dirs", () => {
+    expect(() => assertLiveEvalReady("eval/tasks/live")).toThrow(/--model/);
+  });
+
+  test("rejects mock models for live dirs", () => {
+    expect(() =>
+      assertLiveEvalReady("eval/tasks/live", { model: "mock/echo" }),
+    ).toThrow(/mock/);
+  });
+
+  test("allows a real model for live dirs", () => {
+    expect(() =>
+      assertLiveEvalReady("eval/tasks/live", {
+        model: "anthropic/claude-sonnet-4-20250514",
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe("eval runner policy", () => {
+  test("live defaults to worktree sandbox and 50 max turns", () => {
+    expect(evalSandboxMode(true, {})).toBe("worktree");
+    expect(evalMaxTurns(true, {})).toBe(DEFAULT_LIVE_EVAL_MAX_TURNS);
+    expect(DEFAULT_LIVE_EVAL_MAX_TURNS).toBe(50);
+  });
+
+  test("mock defaults to host sandbox and unbounded turns", () => {
+    expect(evalSandboxMode(false, {})).toBe("host");
+    expect(evalMaxTurns(false, {})).toBeUndefined();
+  });
+
+  test("flags override sandbox and maxTurns", () => {
+    expect(evalSandboxMode(true, { sandbox: "host" })).toBe("host");
+    expect(evalMaxTurns(false, { maxTurns: 3 })).toBe(3);
+  });
+
+  test("failedEvalSummary is a failed pass@1 row", () => {
+    expect(failedEvalSummary("edit-add")).toEqual({
+      taskId: "edit-add",
+      pass: false,
+      turns: 0,
+      usd: null,
+    });
+  });
+
+  test("withEvalTimeout returns fallback when work hangs", async () => {
+    const fallback = failedEvalSummary("slow");
+    const result = await withEvalTimeout(
+      new Promise<typeof fallback>(() => {}),
+      20,
+      fallback,
+    );
+    expect(result).toEqual(fallback);
+  });
+});
+
 describe("runEvalSuite", () => {
+  test("throws when the tasks dir has no yaml", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "zox-eval-empty-"));
+    await expect(runEvalSuite({ tasksDir: dir })).rejects.toThrow(
+      /no eval tasks/i,
+    );
+  });
+
+  test("live suite fails fast without --model", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-eval-live-"));
+    const tasksDir = join(root, "eval/tasks/live");
+    await mkdir(tasksDir, { recursive: true });
+    await writeFile(
+      join(tasksDir, "edit-add.yaml"),
+      "id: edit-add\nprompt: ping\nexpect:\n  stdoutIncludes: ping\n",
+    );
+    await expect(runEvalSuite({ tasksDir })).rejects.toThrow(/--model/);
+  });
+
+  test("live suite rejects mock/echo even when --model is set", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zox-eval-live-mock-"));
+    const tasksDir = join(root, "eval/tasks/live");
+    await mkdir(tasksDir, { recursive: true });
+    await writeFile(
+      join(tasksDir, "edit-add.yaml"),
+      "id: edit-add\nprompt: ping\nexpect:\n  stdoutIncludes: ping\n",
+    );
+    await expect(
+      runEvalSuite({ tasksDir, flags: { model: "mock/echo" } }),
+    ).rejects.toThrow(/mock/);
+  });
+
+  test("default suite directory is mock-only", async () => {
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+    try {
+      const summaries = await runEvalSuite({});
+      expect(summaries.every((row) => row.taskId !== "edit-add")).toBe(true);
+      expect(summaries.some((row) => row.taskId === "echo")).toBe(true);
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
   test("loads yaml sequentially and prints aggregate", async () => {
     const dir = await mkdtemp(join(tmpdir(), "zox-eval-suite-"));
     await mkdir(dir, { recursive: true });

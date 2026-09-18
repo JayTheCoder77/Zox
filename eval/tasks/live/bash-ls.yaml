@@ -1,0 +1,10 @@
+id: bash-ls
+prompt: >
+  Use ls and/or bash to list files under src/. Write listing.txt at the workspace
+  root. The file must mention both a.ts and b.ts.
+expect:
+  files:
+    - path: listing.txt
+      contains: a.ts
+    - path: listing.txt
+      contains: b.ts

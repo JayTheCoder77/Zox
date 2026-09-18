@@ -33,6 +33,7 @@ export type CliFlags = {
   keepWorktree?: boolean;
   autoApprove?: boolean;
   maxTurns?: number;
+  timeoutMs?: number;
 };
 
 export function parseSlash(
@@ -78,6 +79,11 @@ export function parseArgs(argv: string[]): {
     if (arg === "--max-turns" && argv[i + 1]) {
       const maxTurns = Number(argv[++i]);
       if (!Number.isNaN(maxTurns)) flags.maxTurns = maxTurns;
+      continue;
+    }
+    if (arg === "--timeout-ms" && argv[i + 1]) {
+      const timeoutMs = Number(argv[++i]);
+      if (!Number.isNaN(timeoutMs)) flags.timeoutMs = timeoutMs;
       continue;
     }
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { runAgentRun } from "./agent-run.ts";
 import { runEmbed } from "./embed.ts";
-import { runEvalSuite } from "./eval-run.ts";
+import { DEFAULT_EVAL_TASKS_DIR, runEvalSuite } from "./eval-run.ts";
 import { runExportSession } from "./export-session.ts";
 import { runHooksTrust } from "./hooks.ts";
 import { parseArgs } from "./parse.ts";
@@ -22,7 +22,7 @@ async function main(): Promise<void> {
 
   if (positionals[0] === "eval" && positionals[1] === "run") {
     const summaries = await runEvalSuite({
-      tasksDir: positionals[2] ?? "eval/tasks",
+      tasksDir: positionals[2] ?? DEFAULT_EVAL_TASKS_DIR,
       flags,
     });
     if (summaries.some((summary) => !summary.pass)) process.exit(1);

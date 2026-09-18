@@ -1,0 +1,8 @@
+id: write-module
+prompt: >
+  Create src/greet.ts. It must export a function named greet that takes a name
+  string and returns a greeting. Include the exact snippet: export function greet
+expect:
+  files:
+    - path: src/greet.ts
+      contains: export function greet
