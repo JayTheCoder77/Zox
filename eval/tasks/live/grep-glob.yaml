@@ -1,0 +1,9 @@
+id: grep-glob
+prompt: >
+  Search this workspace with grep and/or glob. Find the value of ZOXX_EVAL_TOKEN
+  and write it into FOUND.txt at the workspace root (the file should contain the
+  token value).
+expect:
+  files:
+    - path: FOUND.txt
+      contains: alpha-42

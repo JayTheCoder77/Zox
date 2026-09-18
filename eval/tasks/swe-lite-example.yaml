@@ -1,7 +1,0 @@
-id: swe-lite-example
-prompt: Fix add.ts so add(2, 2) returns 4.
-workspace: eval/fixtures/swe-lite-example
-expect:
-  files:
-    - path: add.ts
-      contains: return a + b

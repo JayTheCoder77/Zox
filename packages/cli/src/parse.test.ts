@@ -121,6 +121,10 @@ describe("parseArgs", () => {
     });
   });
 
+  test("parses --timeout-ms", () => {
+    expect(parseArgs(["--timeout-ms", "120000"]).flags.timeoutMs).toBe(120000);
+  });
+
   test("parseArgs legacy", () => {
     const parsed = parseArgs([
       "export",

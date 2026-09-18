@@ -1,0 +1,8 @@
+id: edit-add
+prompt: >
+  Fix add.ts so add(2, 2) returns 4. Read the file, then edit the implementation.
+  Do not change the test file.
+expect:
+  files:
+    - path: add.ts
+      contains: return a + b
