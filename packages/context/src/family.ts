@@ -1,15 +1,7 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
-const PROMPTS_DIR = join(import.meta.dir, "prompts");
-
-const PROMPT_ANTHROPIC = readFileSync(
-  join(PROMPTS_DIR, "anthropic.txt"),
-  "utf8",
-);
-const PROMPT_OPENAI = readFileSync(join(PROMPTS_DIR, "openai.txt"), "utf8");
-const PROMPT_GEMINI = readFileSync(join(PROMPTS_DIR, "gemini.txt"), "utf8");
-const PROMPT_DEFAULT = readFileSync(join(PROMPTS_DIR, "default.txt"), "utf8");
+import PROMPT_ANTHROPIC from "./prompts/anthropic.txt" with { type: "text" };
+import PROMPT_DEFAULT from "./prompts/default.txt" with { type: "text" };
+import PROMPT_GEMINI from "./prompts/gemini.txt" with { type: "text" };
+import PROMPT_OPENAI from "./prompts/openai.txt" with { type: "text" };
 
 export function selectFamilyPrompt(modelRef: string): string {
   const haystack = modelRef.toLowerCase();

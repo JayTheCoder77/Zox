@@ -9,11 +9,13 @@ coverage
 .turbo
 *.tsbuildinfo
 .worktrees
+.zox/
 .superpowers
 eval/results/
 eval/benchmarks/cache/
 jobs/
 eval-*.tar.gz
+packages/zox-code/*.tgz
 __pycache__/
 logs/run_evaluation/
 openrouter__*.json

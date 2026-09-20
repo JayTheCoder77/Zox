@@ -1,0 +1,38 @@
+{
+  "name": "zox-code",
+  "version": "0.1.0",
+  "description": "Bun-first coding agent harness: TUI, local server, tools, sandbox, and BYOK providers.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "zox": "dist/cli.js",
+    "zox-code": "dist/cli.js"
+  },
+  "files": ["dist", "README.md"],
+  "engines": {
+    "bun": ">=1.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JayTheCoder77/Zox.git"
+  },
+  "bugs": {
+    "url": "https://github.com/JayTheCoder77/Zox/issues"
+  },
+  "homepage": "https://github.com/JayTheCoder77/Zox#readme",
+  "keywords": [
+    "zox",
+    "coding-agent",
+    "cli",
+    "bun",
+    "llm",
+    "tui"
+  ],
+  "scripts": {
+    "build": "bun build ../cli/src/index.ts --outfile dist/cli.js --target bun --packages bundle --production --external react-devtools-core && chmod +x dist/cli.js",
+    "prepublishOnly": "bun run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

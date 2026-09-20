@@ -25,7 +25,9 @@
     "test": "bun test packages",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "typecheck": "tsc --build --pretty false"
+    "typecheck": "tsc --build --pretty false",
+    "build:cli": "bun run --filter zox-code build",
+    "publish:cli": "bun run build:cli && bun publish --cwd packages/zox-code"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
