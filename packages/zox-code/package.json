@@ -8,7 +8,10 @@
     "zox": "dist/cli.js",
     "zox-code": "dist/cli.js"
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "engines": {
     "bun": ">=1.2.0"
   },
