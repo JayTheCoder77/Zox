@@ -17,6 +17,7 @@ export async function runEmbed(flags: CliFlags): Promise<void> {
       port: flags.port ?? 8787,
       sandboxMode: flags.sandbox,
       token,
+      workspaceRoot,
     });
     baseUrl = `http://127.0.0.1:${server.port}`;
   }

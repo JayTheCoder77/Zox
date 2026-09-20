@@ -129,6 +129,38 @@ describe("createApp", () => {
     expect(json.status).toBe("idle");
   });
 
+  test("POST /sessions uses config.model when the client omits model", async () => {
+    const server = app({
+      config: { model: "openrouter/openai/gpt-4.1", agent: "plan" },
+    });
+    const created = await server.request("/sessions", {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ workspaceRoot: "/tmp/ws" }),
+    });
+    expect(created.status).toBe(201);
+    const session = (await created.json()) as { model: string; agent: string };
+    expect(session.model).toBe("openrouter/openai/gpt-4.1");
+    expect(session.agent).toBe("plan");
+  });
+
+  test("POST /sessions keeps an explicit model over config.model", async () => {
+    const server = app({
+      config: { model: "openrouter/openai/gpt-4.1" },
+    });
+    const created = await server.request("/sessions", {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspaceRoot: "/tmp/ws",
+        model: "openai/gpt-4.1",
+      }),
+    });
+    expect(created.status).toBe(201);
+    const session = (await created.json()) as { model: string };
+    expect(session.model).toBe("openai/gpt-4.1");
+  });
+
   test("GET /sessions lists by workspaceRoot and resume attaches without autoLoad", async () => {
     const root = await mkdtemp(join(tmpdir(), "zox-session-resume-"));
     const dbPath = join(root, "state.sqlite");

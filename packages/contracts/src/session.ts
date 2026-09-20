@@ -3,8 +3,8 @@ import { sessionStatusSchema } from "./events.ts";
 
 export const createSessionRequestSchema = z.object({
   workspaceRoot: z.string().min(1),
-  agent: z.string().default("build"),
-  model: z.string().default("mock/echo"),
+  agent: z.string().optional(),
+  model: z.string().optional(),
 });
 export type CreateSessionRequest = z.infer<typeof createSessionRequestSchema>;
 

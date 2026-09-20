@@ -89,6 +89,41 @@ describe("listen", () => {
     expect(json.context?.overflowThreshold).toBe(0.42);
   });
 
+  test("creates sessions with model from .zox/config.json when omitted", async () => {
+    const project = await mkdtemp(join(tmpdir(), "zox-listen-model-"));
+    await mkdir(join(project, ".zox"), { recursive: true });
+    await writeFile(
+      join(project, ".zox", "config.json"),
+      JSON.stringify({
+        model: "openrouter/openai/gpt-4.1",
+        agent: "plan",
+      }),
+    );
+
+    prevCwd = process.cwd();
+    process.chdir(project);
+    const server = await listen({
+      port: 0,
+      token: "model-test-token",
+      sandboxMode: "host",
+      workspaceRoot: project,
+    });
+    servers.push(server);
+
+    const created = await fetch(`http://127.0.0.1:${server.port}/sessions`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer model-test-token",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ workspaceRoot: project }),
+    });
+    expect(created.status).toBe(201);
+    const session = (await created.json()) as { model: string; agent: string };
+    expect(session.model).toBe("openrouter/openai/gpt-4.1");
+    expect(session.agent).toBe("plan");
+  });
+
   test("rejects listen when observability.otlp.endpoint is not a URL", async () => {
     const project = await mkdtemp(join(tmpdir(), "zox-listen-otlp-"));
     await mkdir(join(project, ".zox"), { recursive: true });

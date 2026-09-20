@@ -412,10 +412,10 @@ components:
           type: string
         agent:
           type: string
-          default: build
+          description: Defaults to `.zox/config.json` `agent`, then `build`.
         model:
           type: string
-          default: mock/echo
+          description: Defaults to `.zox/config.json` `model`, then `mock/echo`.
     SendMessageRequest:
       type: object
       required: [content]

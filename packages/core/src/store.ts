@@ -52,7 +52,12 @@ export type StoredSession = {
   createdAt?: number;
 };
 
-export type CreateSessionInput = CreateSessionRequest & {
+export type CreateSessionInput = Omit<
+  CreateSessionRequest,
+  "agent" | "model"
+> & {
+  agent: string;
+  model: string;
   sandboxRoot?: string;
 };
 

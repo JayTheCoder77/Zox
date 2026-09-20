@@ -6,12 +6,12 @@ import {
 } from "./session.ts";
 
 describe("session DTOs", () => {
-  test("create request defaults agent to build", () => {
+  test("create request allows omitting agent and model", () => {
     const parsed = createSessionRequestSchema.parse({
       workspaceRoot: "/tmp/ws",
     });
-    expect(parsed.agent).toBe("build");
-    expect(parsed.model).toBe("mock/echo");
+    expect(parsed.agent).toBeUndefined();
+    expect(parsed.model).toBeUndefined();
   });
 
   test("session list response requires createdAt number", () => {

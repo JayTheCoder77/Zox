@@ -1,6 +1,6 @@
 {
   "name": "zox-code",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Bun-first coding agent harness: TUI, local server, tools, sandbox, and BYOK providers.",
   "license": "MIT",
   "type": "module",

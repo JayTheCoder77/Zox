@@ -310,7 +310,9 @@ export function createApp(opts: {
       return c.json({ error: "Bad request", issues: parsed.error.issues }, 400);
     }
     const session = opts.store.create({
-      ...parsed.data,
+      workspaceRoot: parsed.data.workspaceRoot,
+      agent: parsed.data.agent ?? config.agent ?? "build",
+      model: parsed.data.model ?? config.model ?? "mock/echo",
       sandboxRoot: parsed.data.workspaceRoot,
     });
     try {
