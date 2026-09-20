@@ -1,6 +1,6 @@
 {
   "name": "zox-code",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Bun-first coding agent harness: TUI, local server, tools, sandbox, and BYOK providers.",
   "license": "MIT",
   "type": "module",
@@ -32,7 +32,7 @@
     "tui"
   ],
   "scripts": {
-    "build": "bun build ../cli/src/index.ts --outfile dist/cli.js --target bun --packages bundle --production --external react-devtools-core && chmod +x dist/cli.js",
+    "build": "bun run build.ts",
     "prepublishOnly": "bun run build"
   },
   "publishConfig": {

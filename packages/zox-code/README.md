@@ -15,9 +15,28 @@ bunx zox-code
 Binaries: `zox` and `zox-code` (same entry).
 
 ```sh
-export ANTHROPIC_API_KEY=sk-ant-...   # or OPENAI_API_KEY, etc.
-zox --model anthropic/claude-sonnet-4-20250514
+export OPENROUTER_API_KEY=sk-or-...
+zox --model openrouter/openai/gpt-4.1 --sandbox host
 ```
+
+Or in `.zox/config.json` (the `OPENROUTER_API_KEY` env var is still required):
+
+```json
+{
+  "model": "openrouter/openai/gpt-4.1",
+  "agent": "build",
+  "sandbox": { "mode": "host" },
+  "providers": {
+    "openrouter": {
+      "kind": "openai-compatible",
+      "baseURL": "https://openrouter.ai/api/v1",
+      "apiKeyEnv": "OPENROUTER_API_KEY"
+    }
+  }
+}
+```
+
+Without `"model"`, Zox defaults to `mock/echo`. `providers` does not select a model by itself.
 
 Default sandbox is a git **worktree** under `.zox/worktrees/`. Use `--sandbox host` to edit the current checkout.
 
