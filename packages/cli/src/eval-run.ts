@@ -292,6 +292,9 @@ async function driveAgentSession(opts: {
     if (event.type === "tool.permission_required") {
       await run.respondPermission(event.requestId, { approved: true });
     }
+    if (event.type === "prompt.permission_required") {
+      await run.respondPermission(event.requestId, { approved: false });
+    }
   }
 
   await session.close();

@@ -66,6 +66,7 @@
         "@zox/context": "workspace:*",
         "@zox/contracts": "workspace:*",
         "@zox/hooks": "workspace:*",
+        "@zox/judge": "workspace:*",
         "@zox/memory": "workspace:*",
         "@zox/providers": "workspace:*",
         "@zox/skills": "workspace:*",
@@ -79,6 +80,17 @@
     "packages/hooks": {
       "name": "@zox/hooks",
       "version": "0.0.0",
+      "devDependencies": {
+        "@types/bun": "1.4.2",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/judge": {
+      "name": "@zox/judge",
+      "version": "0.0.0",
+      "dependencies": {
+        "zod": "catalog:",
+      },
       "devDependencies": {
         "@types/bun": "1.4.2",
         "typescript": "catalog:",
@@ -173,6 +185,7 @@
         "@zox/contracts": "workspace:*",
         "@zox/core": "workspace:*",
         "@zox/hooks": "workspace:*",
+        "@zox/judge": "workspace:*",
         "@zox/lsp": "workspace:*",
         "@zox/mcp": "workspace:*",
         "@zox/memory": "workspace:*",
@@ -351,6 +364,8 @@
     "@zox/core": ["@zox/core@workspace:packages/core"],
 
     "@zox/hooks": ["@zox/hooks@workspace:packages/hooks"],
+
+    "@zox/judge": ["@zox/judge@workspace:packages/judge"],
 
     "@zox/lsp": ["@zox/lsp@workspace:packages/lsp"],
 

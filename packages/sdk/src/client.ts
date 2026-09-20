@@ -66,7 +66,8 @@ export function createZoxClient(opts: {
         function dispatchTool(event: ZoxEvent): void {
           if (
             event.type !== "tool.started" &&
-            event.type !== "tool.permission_required"
+            event.type !== "tool.permission_required" &&
+            event.type !== "prompt.permission_required"
           ) {
             return;
           }

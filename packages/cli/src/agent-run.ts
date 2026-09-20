@@ -54,6 +54,7 @@ export async function runAgentRun(opts: {
       | "compacting"
       | "awaiting_permission" = "idle";
     let hadError = false;
+    let promptBlocked = false;
     for await (const event of run.events()) {
       if (event.type === "session.status") {
         lastStatus = event.status;
@@ -61,7 +62,12 @@ export async function runAgentRun(opts: {
       if (event.type === "error") {
         hadError = true;
       }
-      if (event.type === "tool.permission_required") {
+      if (event.type === "prompt.blocked") {
+        promptBlocked = true;
+      }
+      if (event.type === "prompt.permission_required") {
+        await run.respondPermission(event.requestId, { approved: false });
+      } else if (event.type === "tool.permission_required") {
         await run.respondPermission(event.requestId, {
           approved: Boolean(opts.flags.autoApprove),
         });
@@ -70,7 +76,7 @@ export async function runAgentRun(opts: {
 
     await session.close();
 
-    return lastStatus === "idle" && !hadError ? 0 : 1;
+    return lastStatus === "idle" && !hadError && !promptBlocked ? 0 : 1;
   } finally {
     server?.stop();
   }

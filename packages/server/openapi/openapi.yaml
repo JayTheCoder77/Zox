@@ -86,7 +86,7 @@ paths:
           content:
             text/event-stream:
               schema:
-                type: string
+                $ref: "#/components/schemas/ZoxEvent"
   /sessions/{id}/ws:
     get:
       summary: WebSocket for session events and permission.response
@@ -117,7 +117,7 @@ paths:
           description: Cancelled
   /sessions/{id}/permissions/{requestId}:
     post:
-      summary: Approve or deny a tool permission request
+      summary: Approve or deny a tool or prompt permission request
       parameters:
         - $ref: "#/components/parameters/SessionId"
         - name: requestId
@@ -508,3 +508,45 @@ components:
           type: array
           items:
             type: string
+    ZoxEvent:
+      description: Session event streamed over SSE and WebSocket
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum:
+            - session.status
+            - message.delta
+            - message.completed
+            - tool.started
+            - tool.completed
+            - tool.permission_required
+            - usage.turn
+            - usage.session
+            - context.estimated
+            - context.overflow
+            - context.compacted
+            - error
+            - skills.changed
+            - budget.exceeded
+            - prompt.guardrail
+            - prompt.blocked
+            - prompt.permission_required
+        sessionId:
+          type: string
+        outcome:
+          type: string
+          enum: [allow, deny, ask, skipped]
+        question:
+          type: string
+          enum: [injection, policy_violation]
+        pYes:
+          type: number
+        confidence:
+          type: number
+        reason:
+          type: string
+        requestId:
+          type: string
+

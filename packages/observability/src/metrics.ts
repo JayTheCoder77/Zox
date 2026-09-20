@@ -20,6 +20,11 @@ export function createMetrics(): {
   setSessionCost(usd: number): void;
   observeHookDuration(event: string, seconds: number): void;
   recordSkillLoad(source: SkillLoadSource): void;
+  recordJudge(
+    outcome: "allow" | "deny" | "ask" | "skipped",
+    latencySeconds: number,
+    question?: string,
+  ): void;
   renderPrometheus(): string;
 } {
   const toolCalls = new Map<string, number>();
@@ -38,6 +43,8 @@ export function createMetrics(): {
   let modelLatencySeconds = 0;
   let contextEstimatedTokens = 0;
   let sessionCostUsd = 0;
+  const judgeCalls = new Map<string, number>();
+  let judgeLatencySeconds = 0;
 
   const bump = (map: Map<string, number>, key: string, amount: number) => {
     map.set(key, (map.get(key) ?? 0) + amount);
@@ -79,6 +86,14 @@ export function createMetrics(): {
     },
     recordSkillLoad(source: SkillLoadSource) {
       bump(skillLoads, source, 1);
+    },
+    recordJudge(
+      outcome: "allow" | "deny" | "ask" | "skipped",
+      latencySeconds: number,
+      question?: string,
+    ) {
+      bump(judgeCalls, `${outcome}|${question ?? ""}`, 1);
+      judgeLatencySeconds += latencySeconds;
     },
     renderPrometheus(): string {
       const lines: string[] = [];
@@ -168,6 +183,27 @@ export function createMetrics(): {
           `zox_skills_loads_total{source="${source}"} ${skillLoads.get(source) ?? 0}`,
         );
       }
+
+      help("zox_judge_calls_total", "counter", "Prompt judge outcomes");
+      if (judgeCalls.size === 0) {
+        lines.push('zox_judge_calls_total{outcome="",question=""} 0');
+      } else {
+        for (const [key, value] of judgeCalls) {
+          const sep = key.indexOf("|");
+          const outcome = key.slice(0, sep);
+          const question = key.slice(sep + 1);
+          lines.push(
+            `zox_judge_calls_total{outcome="${escapeLabel(outcome)}",question="${escapeLabel(question)}"} ${value}`,
+          );
+        }
+      }
+
+      help(
+        "zox_judge_latency_seconds",
+        "gauge",
+        "Prompt judge latency in seconds",
+      );
+      lines.push(`zox_judge_latency_seconds ${judgeLatencySeconds}`);
 
       return `${lines.join("\n")}\n`;
     },

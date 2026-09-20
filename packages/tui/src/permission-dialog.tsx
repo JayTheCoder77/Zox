@@ -2,7 +2,8 @@ import { Box, Text, useInput } from "ink";
 import { toolInvocationSummary } from "./format.ts";
 
 export function PermissionDialog(props: {
-  toolName: string;
+  kind?: "tool" | "prompt";
+  toolName?: string;
   toolArguments?: Record<string, unknown>;
   onRespond: (approved: boolean) => void;
 }) {
@@ -12,10 +13,13 @@ export function PermissionDialog(props: {
     if (key === "n") props.onRespond(false);
   });
 
-  const summary = toolInvocationSummary(
-    props.toolName,
-    props.toolArguments ?? {},
-  );
+  const promptAsk = props.kind === "prompt";
+  const summary = promptAsk
+    ? "Submit this prompt anyway?"
+    : toolInvocationSummary(
+        props.toolName ?? "tool",
+        props.toolArguments ?? {},
+      );
 
   return (
     <Box
@@ -28,7 +32,9 @@ export function PermissionDialog(props: {
         Permission required
       </Text>
       <Text>{summary}</Text>
-      <Text dimColor>Allow? [y/n]</Text>
+      <Text dimColor>
+        {promptAsk ? "Submit anyway? [y/n]" : "Allow? [y/n]"}
+      </Text>
     </Box>
   );
 }

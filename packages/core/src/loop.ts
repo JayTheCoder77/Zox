@@ -9,6 +9,7 @@ import {
   selectFamilyPrompt,
 } from "@zox/context";
 import type { ZoxEvent } from "@zox/contracts";
+import type { PromptJudge, PromptJudgeResult } from "@zox/judge";
 import { parsePlan } from "@zox/memory";
 import type {
   ChatMessage,
@@ -72,8 +73,113 @@ export type TurnObservability = {
   recordModelLatency?(seconds: number): void;
   recordContextEstimated?(tokens: number): void;
   recordSkillLoad?(source: "slash" | "tool" | "auto"): void;
+  recordJudge?(info: {
+    latencyMs: number;
+    outcome: "allow" | "deny" | "ask" | "skipped";
+    question?: string;
+    reason?: string;
+    prompt?: string;
+  }): void;
   withTool?<T>(name: string, fn: () => Promise<T>): Promise<T>;
 };
+
+export type { PromptJudge, PromptJudgeResult };
+
+async function* reviewHumanPrompt(opts: {
+  session: StoredSession;
+  userContent: string;
+  judge?: PromptJudge;
+  permission?: PermissionResponder;
+  observability?: TurnObservability;
+  ids?: {
+    requestId(): string;
+  };
+}): AsyncGenerator<ZoxEvent, boolean> {
+  const judge = opts.judge;
+  if (!judge) return false;
+  const started = performance.now();
+  const result = await judge.review({
+    prompt: opts.userContent,
+    workspaceRoot: opts.session.workspaceRoot,
+  });
+  const latencyMs = performance.now() - started;
+  opts.observability?.recordJudge?.({
+    latencyMs,
+    outcome: result.outcome,
+    question: result.outcome === "skipped" ? undefined : result.question,
+    reason: result.reason,
+    prompt: opts.userContent,
+  });
+
+  if (result.outcome === "skipped") {
+    yield {
+      type: "prompt.guardrail",
+      sessionId: opts.session.id,
+      outcome: "skipped",
+      reason: result.reason,
+    };
+    return false;
+  }
+
+  yield {
+    type: "prompt.guardrail",
+    sessionId: opts.session.id,
+    outcome: result.outcome,
+    question: result.question,
+    pYes: result.pYes,
+    confidence: result.confidence,
+    reason: result.reason,
+  };
+
+  if (result.outcome === "allow") {
+    return false;
+  }
+
+  if (result.outcome === "ask") {
+    const requestId = opts.ids?.requestId() ?? createId("req");
+    opts.session.status = "awaiting_permission";
+    yield {
+      type: "session.status",
+      sessionId: opts.session.id,
+      status: "awaiting_permission",
+    };
+    yield {
+      type: "prompt.permission_required",
+      sessionId: opts.session.id,
+      requestId,
+      question: result.question,
+      reason: result.reason,
+    };
+    const approved = opts.permission
+      ? await opts.permission.wait(requestId)
+      : false;
+    if (approved) {
+      opts.session.status = "running";
+      yield {
+        type: "session.status",
+        sessionId: opts.session.id,
+        status: "running",
+      };
+      return false;
+    }
+  }
+
+  yield {
+    type: "prompt.blocked",
+    sessionId: opts.session.id,
+    question: result.question ?? "injection",
+    reason: result.reason ?? "Prompt blocked by guardrail",
+    pYes: result.pYes ?? 0,
+    confidence: result.confidence ?? 0,
+  };
+  opts.session.status = "idle";
+  yield {
+    type: "session.status",
+    sessionId: opts.session.id,
+    status: "idle",
+  };
+  return true;
+}
 
 export async function* runTurn(opts: {
   session: StoredSession;
@@ -82,6 +188,8 @@ export async function* runTurn(opts: {
   tools: ToolRegistry;
   permission?: PermissionResponder;
   hooks?: HookRunner;
+  judge?: PromptJudge;
+  skipJudge?: boolean;
   context?: ContextEngine;
   overflowThreshold?: number;
   prune?: PruneOptions;
@@ -133,6 +241,8 @@ async function* runTurnBody(opts: {
   tools: ToolRegistry;
   permission?: PermissionResponder;
   hooks?: HookRunner;
+  judge?: PromptJudge;
+  skipJudge?: boolean;
   context?: ContextEngine;
   overflowThreshold?: number;
   prune?: PruneOptions;
@@ -209,6 +319,11 @@ async function* runTurnBody(opts: {
     sessionId: opts.session.id,
     status: "running",
   };
+
+  if (opts.judge && !opts.skipJudge) {
+    const blocked = yield* reviewHumanPrompt(opts);
+    if (blocked) return;
+  }
 
   if (opts.hooks) {
     const promptHook = await opts.hooks.run("UserPromptSubmit", {
@@ -776,6 +891,8 @@ async function* iterSubagentTurn(opts: {
   tools: ToolRegistry;
   permission?: PermissionResponder;
   hooks?: HookRunner;
+  judge?: PromptJudge;
+  skipJudge?: boolean;
   context?: ContextEngine;
   overflowThreshold?: number;
   prune?: PruneOptions;
@@ -811,6 +928,8 @@ async function* iterSubagentTurn(opts: {
     tools: opts.tools,
     permission: opts.permission,
     hooks: opts.hooks,
+    judge: opts.judge,
+    skipJudge: true,
     context: opts.context,
     overflowThreshold: opts.overflowThreshold,
     prune: opts.prune,
@@ -867,6 +986,8 @@ async function* executeToolCall(input: {
     tools: ToolRegistry;
     permission?: PermissionResponder;
     hooks?: HookRunner;
+    judge?: PromptJudge;
+    skipJudge?: boolean;
     context?: ContextEngine;
     overflowThreshold?: number;
     prune?: PruneOptions;

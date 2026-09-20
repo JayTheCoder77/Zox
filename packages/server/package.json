@@ -12,6 +12,7 @@
     "@zox/contracts": "workspace:*",
     "@zox/core": "workspace:*",
     "@zox/hooks": "workspace:*",
+    "@zox/judge": "workspace:*",
     "@zox/lsp": "workspace:*",
     "@zox/mcp": "workspace:*",
     "@zox/memory": "workspace:*",

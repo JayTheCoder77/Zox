@@ -76,4 +76,14 @@ async function handleEvent(
     const approved = await promptPermission(summary);
     await run.respondPermission(event.requestId, { approved });
   }
+  if (event.type === "prompt.permission_required") {
+    const approved = await promptPermission("Submit this prompt anyway?");
+    await run.respondPermission(event.requestId, { approved });
+  }
+  if (event.type === "prompt.guardrail" && event.outcome === "skipped") {
+    process.stderr.write(`Judge skipped: ${event.reason ?? "unknown"}\n`);
+  }
+  if (event.type === "prompt.blocked") {
+    process.stderr.write(`Prompt blocked: ${event.reason}\n`);
+  }
 }
