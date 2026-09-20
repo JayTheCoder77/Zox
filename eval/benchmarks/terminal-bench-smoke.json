@@ -1,0 +1,7 @@
+{
+  "task_names": [
+    "openssl-selfsigned-cert",
+    "fix-git",
+    "nginx-request-logging"
+  ]
+}

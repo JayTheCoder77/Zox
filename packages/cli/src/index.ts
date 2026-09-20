@@ -1,7 +1,15 @@
 #!/usr/bin/env bun
 import { runAgentRun } from "./agent-run.ts";
 import { runEmbed } from "./embed.ts";
-import { DEFAULT_EVAL_TASKS_DIR, runEvalSuite } from "./eval-run.ts";
+import { archiveEvalRun } from "./eval-archive.ts";
+import { DEFAULT_PRIVATE_TASKS_DIR, runPrivateSuite } from "./eval-private.ts";
+import {
+  DEFAULT_EVAL_TASKS_DIR,
+  runEvalSuite,
+  runWorkspaceAgent,
+} from "./eval-run.ts";
+import { runSweLite } from "./eval-swe-lite.ts";
+import { runTerminalBench } from "./eval-terminal-bench.ts";
 import { runExportSession } from "./export-session.ts";
 import { runHooksTrust } from "./hooks.ts";
 import { parseArgs } from "./parse.ts";
@@ -26,6 +34,30 @@ async function main(): Promise<void> {
       flags,
     });
     if (summaries.some((summary) => !summary.pass)) process.exit(1);
+    return;
+  }
+
+  if (positionals[0] === "eval" && positionals[1] === "private") {
+    const summaries = await runPrivateSuite({
+      tasksDir: positionals[2] ?? DEFAULT_PRIVATE_TASKS_DIR,
+      flags,
+      runAgent: runWorkspaceAgent,
+    });
+    if (summaries.some((summary) => !summary.pass)) process.exit(1);
+    return;
+  }
+
+  if (positionals[0] === "eval" && positionals[1] === "swe-lite") {
+    process.exit(await runSweLite({ flags }));
+  }
+
+  if (positionals[0] === "eval" && positionals[1] === "terminal-bench") {
+    process.exit(await runTerminalBench({ flags }));
+  }
+
+  if (positionals[0] === "eval" && positionals[1] === "archive") {
+    const dest = await archiveEvalRun({ dest: positionals[2] });
+    console.log(dest);
     return;
   }
 

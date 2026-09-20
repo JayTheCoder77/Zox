@@ -183,13 +183,75 @@ async function runWithListen(
   }
 }
 
-async function executeTask(opts: {
+export type WorkspaceAgentResult = {
+  stdout: string;
+  transcript: string;
+  turns: number;
+  usd: number | null;
+  latencyMs: number;
+  toolCalls: number;
+  toolFailures: number;
+};
+
+export async function runWorkspaceAgent(opts: {
+  workspace: string;
+  task: string;
+  flags: CliFlags;
+}): Promise<WorkspaceAgentResult> {
+  const flags = opts.flags;
+  const token =
+    flags.token ?? process.env.ZOXX_SERVER_TOKEN ?? crypto.randomUUID();
+  const maxTurns = flags.maxTurns;
+  const timeoutMs = flags.timeoutMs ?? DEFAULT_EVAL_TIMEOUT_MS;
+  const started = Date.now();
+  const server = await listen({
+    hostname: "127.0.0.1",
+    port: flags.port ?? 0,
+    sandboxMode: flags.sandbox ?? "worktree",
+    workspaceRoot: opts.workspace,
+    token,
+    budget: maxTurns === undefined ? undefined : { maxTurns },
+  });
+  try {
+    const work = driveAgentSession({
+      baseUrl: `http://127.0.0.1:${server.port}`,
+      token,
+      workspaceRoot: opts.workspace,
+      model: flags.model ?? "mock/echo",
+      prompt: opts.task,
+    }).catch(
+      (): WorkspaceAgentResult => ({
+        stdout: "",
+        transcript: "",
+        turns: 0,
+        usd: null,
+        latencyMs: Date.now() - started,
+        toolCalls: 0,
+        toolFailures: 0,
+      }),
+    );
+    const result = await withEvalTimeout(work, timeoutMs, {
+      stdout: "",
+      transcript: "",
+      turns: 0,
+      usd: null,
+      latencyMs: Date.now() - started,
+      toolCalls: 0,
+      toolFailures: 0,
+    });
+    return { ...result, latencyMs: Date.now() - started };
+  } finally {
+    server.stop();
+  }
+}
+
+async function driveAgentSession(opts: {
   baseUrl: string;
   token: string;
   workspaceRoot: string;
   model: string;
-  task: EvalTask;
-}): Promise<EvalRunSummary> {
+  prompt: string;
+}): Promise<WorkspaceAgentResult> {
   const client = createZoxClient({
     baseUrl: opts.baseUrl,
     token: opts.token,
@@ -199,17 +261,27 @@ async function executeTask(opts: {
     agent: "build",
     model: opts.model,
   });
-  const run = session.send(opts.task.prompt);
+  const run = session.send(opts.prompt);
   let stdout = "";
+  let transcript = "";
   let turns = 0;
   let usdSum = 0;
   let hasUsd = false;
+  let toolCalls = 0;
+  let toolFailures = 0;
+  const started = Date.now();
 
   for await (const event of run.events()) {
     if (event.type === "message.delta") stdout += event.delta;
-    else if (event.type === "message.completed" && stdout.length === 0) {
-      stdout = event.content;
+    else if (event.type === "message.completed") {
+      if (stdout.length === 0) stdout = event.content;
+      transcript += `${event.content}\n`;
     }
+    if (event.type === "tool.started") {
+      toolCalls += 1;
+      transcript += `[tool ${event.name}]\n`;
+    }
+    if (event.type === "tool.completed" && !event.ok) toolFailures += 1;
     if (event.type === "usage.turn") {
       turns += 1;
       if (typeof event.estimatedUsd === "number") {
@@ -223,10 +295,37 @@ async function executeTask(opts: {
   }
 
   await session.close();
+  if (!transcript) transcript = stdout;
 
+  return {
+    stdout,
+    transcript,
+    turns,
+    usd: hasUsd ? usdSum : null,
+    latencyMs: Date.now() - started,
+    toolCalls,
+    toolFailures,
+  };
+}
+
+async function executeTask(opts: {
+  baseUrl: string;
+  token: string;
+  workspaceRoot: string;
+  model: string;
+  task: EvalTask;
+}): Promise<EvalRunSummary> {
+  const started = Date.now();
+  const agent = await driveAgentSession({
+    baseUrl: opts.baseUrl,
+    token: opts.token,
+    workspaceRoot: opts.workspaceRoot,
+    model: opts.model,
+    prompt: opts.task.prompt,
+  });
   const stdoutOk =
     opts.task.expect.stdoutIncludes === undefined ||
-    stdout.includes(opts.task.expect.stdoutIncludes);
+    agent.stdout.includes(opts.task.expect.stdoutIncludes);
   const filesOk = await expectedFilesOk(
     opts.workspaceRoot,
     opts.task.expect.files,
@@ -235,8 +334,11 @@ async function executeTask(opts: {
   return {
     taskId: opts.task.id,
     pass: stdoutOk && filesOk,
-    turns,
-    usd: hasUsd ? usdSum : null,
+    turns: agent.turns,
+    usd: agent.usd,
+    latencyMs: Date.now() - started,
+    toolCalls: agent.toolCalls,
+    toolFailures: agent.toolFailures,
   };
 }
 

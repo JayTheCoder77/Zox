@@ -34,6 +34,12 @@ export type CliFlags = {
   autoApprove?: boolean;
   maxTurns?: number;
   timeoutMs?: number;
+  instanceIds?: string[];
+  tasks?: string[];
+  limit?: number;
+  skipEval?: boolean;
+  k?: number;
+  jobsDir?: string;
 };
 
 export function parseSlash(
@@ -84,6 +90,37 @@ export function parseArgs(argv: string[]): {
     if (arg === "--timeout-ms" && argv[i + 1]) {
       const timeoutMs = Number(argv[++i]);
       if (!Number.isNaN(timeoutMs)) flags.timeoutMs = timeoutMs;
+      continue;
+    }
+    if (arg === "--limit" && argv[i + 1]) {
+      const limit = Number(argv[++i]);
+      if (!Number.isNaN(limit)) flags.limit = limit;
+      continue;
+    }
+    if (arg === "--k" && argv[i + 1]) {
+      const k = Number(argv[++i]);
+      if (!Number.isNaN(k)) flags.k = k;
+      continue;
+    }
+    if (arg === "--n-attempts" && argv[i + 1]) {
+      const k = Number(argv[++i]);
+      if (!Number.isNaN(k)) flags.k = k;
+      continue;
+    }
+    if (arg === "--skip-eval") {
+      flags.skipEval = true;
+      continue;
+    }
+    if (arg === "--instance-id" && argv[i + 1]) {
+      flags.instanceIds = [...(flags.instanceIds ?? []), argv[++i] ?? ""];
+      continue;
+    }
+    if (arg === "--task" && argv[i + 1]) {
+      flags.tasks = [...(flags.tasks ?? []), argv[++i] ?? ""];
+      continue;
+    }
+    if (arg === "--jobs-dir" && argv[i + 1]) {
+      flags.jobsDir = argv[++i];
       continue;
     }
 

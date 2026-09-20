@@ -1,6 +1,30 @@
 import { describe, expect, test } from "bun:test";
-import { createOpenAICompatibleAdapter } from "./compatible.ts";
+import {
+  createOpenAICompatibleAdapter,
+  toStreamTextPrompt,
+} from "./compatible.ts";
 import type { StreamEvent } from "./types.ts";
+
+describe("toStreamTextPrompt", () => {
+  test("moves system messages into instructions for AI SDK 7", () => {
+    const prompt = toStreamTextPrompt([
+      { role: "system", content: "Zox family: anthropic" },
+      { role: "system", content: "implement the issue" },
+      { role: "user", content: "fix django" },
+    ]);
+    expect(prompt.instructions).toEqual([
+      { role: "system", content: "Zox family: anthropic" },
+      { role: "system", content: "implement the issue" },
+    ]);
+    expect(prompt.messages).toEqual([{ role: "user", content: "fix django" }]);
+  });
+
+  test("omits instructions when there are no system messages", () => {
+    const prompt = toStreamTextPrompt([{ role: "user", content: "hi" }]);
+    expect(prompt.instructions).toBeUndefined();
+    expect(prompt.messages).toEqual([{ role: "user", content: "hi" }]);
+  });
+});
 
 describe("createOpenAICompatibleAdapter", () => {
   test("uses the provided id and injected stream implementation", async () => {
