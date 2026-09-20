@@ -12,12 +12,14 @@ import {
   createId,
   type HookRunner,
   type PermissionResponder,
+  type PromptJudge,
   runTurn,
   type SessionStore,
   type SessionSummarizer,
   type StoredSession,
 } from "@zox/core";
 import type { HooksFile } from "@zox/hooks";
+import { createPromptJudge, DEFAULT_API_KEY_ENV } from "@zox/judge";
 import { formatDiagnostics, typescriptDiagnostics } from "@zox/lsp";
 import { McpPool } from "@zox/mcp";
 import {
@@ -105,6 +107,30 @@ export type AppConfig = {
   instructions?: { files?: string[] };
   hooks?: HooksFile;
   worktreeCleanup?: "keep" | "remove";
+  judge?: {
+    enabled?: boolean;
+    apiKeyEnv?: string;
+    baseURL?: string;
+    model?: string;
+    prompt?: {
+      enabled?: boolean;
+      policy?: string;
+      maxPromptChars?: number;
+      timeoutMs?: number;
+      injection?: {
+        denyMinYes?: number;
+        denyMinConfidence?: number;
+        askMinYes?: number;
+        askMinConfidence?: number;
+      };
+      policyViolation?: {
+        denyMinYes?: number;
+        denyMinConfidence?: number;
+        askMinYes?: number;
+        askMinConfidence?: number;
+      };
+    };
+  };
 };
 
 const MODEL_CATALOG = [
@@ -158,6 +184,7 @@ export function createApp(opts: {
   adapterIds?: string[];
   workspaceRoot?: string;
   remoteExec?: import("@zox/tools").ToolContext["remoteExec"];
+  judge?: PromptJudge;
 }): Hono & {
   handleWebSocket: (
     request: Request,
@@ -168,6 +195,7 @@ export function createApp(opts: {
   const app = new Hono();
   const tools = opts.tools ?? defaultTools();
   const mcp = opts.mcp ?? new McpPool();
+  const promptJudge = opts.judge ?? promptJudgeFromConfig(opts.config?.judge);
   const config: AppConfig = {
     model: "mock/echo",
     agent: "build",
@@ -980,6 +1008,7 @@ export function createApp(opts: {
       tools,
       permission: wait,
       hooks: opts.hooks,
+      judge: promptJudge,
       context: {
         windowTokens: config.context?.windowTokens,
       },
@@ -1503,4 +1532,18 @@ function metricsClientIsLocal(c: {
   } catch {
     return true;
   }
+}
+
+function promptJudgeFromConfig(
+  judge: AppConfig["judge"],
+): PromptJudge | undefined {
+  if (!judge?.enabled) return undefined;
+  const envName = judge.apiKeyEnv ?? DEFAULT_API_KEY_ENV;
+  return createPromptJudge({
+    enabled: true,
+    apiKey: process.env[envName],
+    baseURL: judge.baseURL,
+    model: judge.model,
+    prompt: judge.prompt,
+  });
 }

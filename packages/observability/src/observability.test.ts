@@ -32,6 +32,8 @@ const METRIC_NAMES = [
   "zox_session_cost_usd",
   "zox_hook_duration_seconds",
   "zox_skills_loads_total",
+  "zox_judge_calls_total",
+  "zox_judge_latency_seconds",
 ] as const;
 
 describe("createObservability", () => {
@@ -113,6 +115,22 @@ describe("createObservability", () => {
     );
     expect(text.toLowerCase()).not.toContain("system prompt");
     expect(text).not.toMatch(/user content|prompt body/i);
+  });
+
+  test("recordJudge counts outcomes and omits prompt text by default", () => {
+    const obs = createObservability({ enabled: false, recordContent: false });
+    obs.recordJudge({
+      latencyMs: 12,
+      outcome: "skipped",
+      reason: "http_500",
+      prompt: "SECRET PROMPT BODY",
+    });
+    const text = obs.renderPrometheus();
+    expect(text).toContain(
+      'zox_judge_calls_total{outcome="skipped",question=""} 1',
+    );
+    expect(text).toContain("zox_judge_latency_seconds");
+    expect(text).not.toContain("SECRET PROMPT BODY");
   });
 
   test("enabled startTurn records gen_ai.chat or zox.session span", async () => {

@@ -129,4 +129,34 @@ describe("zoxConfigSchema", () => {
       Authorization: "Bearer ${LANGFUSE_OTEL_TOKEN}",
     });
   });
+
+  test("parses judge prompt guardrail fields", () => {
+    const parsed = zoxConfigSchema.parse({
+      judge: {
+        enabled: true,
+        apiKeyEnv: "TYPESAFE_API_KEY",
+        baseURL: "https://api.typesafe.ai/v1/systemone",
+        model: "jev-latest",
+        prompt: {
+          enabled: true,
+          policy: "No secret exfil.",
+          maxPromptChars: 4000,
+          timeoutMs: 2500,
+          injection: { denyMinYes: 0.9, denyMinConfidence: 0.8 },
+          policyViolation: { askMinYes: 0.6, askMinConfidence: 0.5 },
+        },
+      },
+    });
+    expect(parsed.judge?.enabled).toBe(true);
+    expect(parsed.judge?.apiKeyEnv).toBe("TYPESAFE_API_KEY");
+    expect(parsed.judge?.prompt?.maxPromptChars).toBe(4000);
+    expect(parsed.judge?.prompt?.injection?.denyMinYes).toBe(0.9);
+  });
+
+  test("rejects unknown keys in judge", () => {
+    const result = zoxConfigSchema.safeParse({
+      judge: { enabled: true, unknownFlag: true },
+    });
+    expect(result.success).toBe(false);
+  });
 });

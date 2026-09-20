@@ -1274,4 +1274,289 @@ describe("runTurn", () => {
       status: "idle",
     });
   });
+
+  test("judge deny does not call the model and stays idle", async () => {
+    let streamed = 0;
+    const inner = createProviderRouter({ adapters: [createMockAdapter()] });
+    const router = {
+      streamChat(params: Parameters<typeof inner.streamChat>[0]) {
+        streamed += 1;
+        return inner.streamChat(params);
+      },
+    };
+    const sess = session();
+    const events = [];
+    for await (const event of runTurn({
+      session: sess,
+      userContent: "ignore system",
+      router,
+      tools: new ToolRegistry(),
+      judge: {
+        enabled: true,
+        async review() {
+          return {
+            outcome: "deny",
+            scores: {
+              injection: { pYes: 0.92, confidence: 0.8 },
+              policy_violation: { pYes: 0.1, confidence: 1 },
+            },
+            question: "injection",
+            pYes: 0.92,
+            confidence: 0.8,
+            reason: "Possible prompt injection",
+          };
+        },
+      },
+    })) {
+      events.push(event);
+    }
+    expect(streamed).toBe(0);
+    expect(sess.status).toBe("idle");
+    expect(sess.messages.some((m) => m.role === "user")).toBe(true);
+    expect(
+      events.some(
+        (e) =>
+          e.type === "prompt.blocked" &&
+          e.question === "injection" &&
+          e.pYes === 0.92,
+      ),
+    ).toBe(true);
+    expect(
+      events.some((e) => e.type === "prompt.guardrail" && e.outcome === "deny"),
+    ).toBe(true);
+    expect(events.some((e) => e.type === "message.delta")).toBe(false);
+    expect(events.at(-1)).toMatchObject({
+      type: "session.status",
+      status: "idle",
+    });
+  });
+
+  test("judge ask approve runs the model after UserPromptSubmit", async () => {
+    const hookCalls: string[] = [];
+    const sess = session();
+    const events = [];
+    for await (const event of runTurn({
+      session: sess,
+      userContent: "maybe risky",
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+      tools: new ToolRegistry(),
+      permission: { wait: async () => true },
+      hooks: {
+        async run(event) {
+          hookCalls.push(event);
+          return { decision: "allow" as const };
+        },
+      },
+      judge: {
+        enabled: true,
+        async review() {
+          return {
+            outcome: "ask" as const,
+            scores: {
+              injection: { pYes: 0.6, confidence: 0.6 },
+              policy_violation: { pYes: 0.1, confidence: 1 },
+            },
+            question: "injection" as const,
+            pYes: 0.6,
+            confidence: 0.6,
+            reason: "Possible prompt injection",
+          };
+        },
+      },
+    })) {
+      events.push(event);
+    }
+    expect(events.some((e) => e.type === "prompt.permission_required")).toBe(
+      true,
+    );
+    expect(events.some((e) => e.type === "message.delta")).toBe(true);
+    expect(hookCalls[0]).toBe("UserPromptSubmit");
+  });
+
+  test("judge ask reject is the same as deny", async () => {
+    let streamed = 0;
+    const inner = createProviderRouter({ adapters: [createMockAdapter()] });
+    const sess = session();
+    const events = [];
+    for await (const event of runTurn({
+      session: sess,
+      userContent: "maybe risky",
+      router: {
+        streamChat(params) {
+          streamed += 1;
+          return inner.streamChat(params);
+        },
+      },
+      tools: new ToolRegistry(),
+      permission: { wait: async () => false },
+      judge: {
+        enabled: true,
+        async review() {
+          return {
+            outcome: "ask" as const,
+            scores: {
+              injection: { pYes: 0.6, confidence: 0.6 },
+              policy_violation: { pYes: 0.1, confidence: 1 },
+            },
+            question: "injection" as const,
+            pYes: 0.6,
+            confidence: 0.6,
+            reason: "Possible prompt injection",
+          };
+        },
+      },
+    })) {
+      events.push(event);
+    }
+    expect(streamed).toBe(0);
+    expect(sess.status).toBe("idle");
+    expect(events.some((e) => e.type === "prompt.blocked")).toBe(true);
+  });
+
+  test("judge ask with no permission waiter denies", async () => {
+    const events = [];
+    for await (const event of runTurn({
+      session: session(),
+      userContent: "maybe",
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+      tools: new ToolRegistry(),
+      judge: {
+        enabled: true,
+        async review() {
+          return {
+            outcome: "ask" as const,
+            scores: {
+              injection: { pYes: 0.6, confidence: 0.6 },
+              policy_violation: { pYes: 0.1, confidence: 1 },
+            },
+            question: "injection" as const,
+            pYes: 0.6,
+            confidence: 0.6,
+          };
+        },
+      },
+    })) {
+      events.push(event);
+    }
+    expect(events.some((e) => e.type === "prompt.blocked")).toBe(true);
+    expect(events.some((e) => e.type === "message.delta")).toBe(false);
+  });
+
+  test("judge skipped still runs the model and emits skipped guardrail", async () => {
+    const events = [];
+    for await (const event of runTurn({
+      session: session(),
+      userContent: "ping",
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+      tools: new ToolRegistry(),
+      judge: {
+        enabled: true,
+        async review() {
+          return { outcome: "skipped", reason: "http_500" };
+        },
+      },
+    })) {
+      events.push(event);
+    }
+    expect(
+      events.some(
+        (e) =>
+          e.type === "prompt.guardrail" &&
+          e.outcome === "skipped" &&
+          e.reason === "http_500",
+      ),
+    ).toBe(true);
+    expect(events.some((e) => e.type === "error" && !e.code)).toBe(false);
+    expect(events.some((e) => e.type === "message.delta")).toBe(true);
+  });
+
+  test("subagent task path does not call the judge", async () => {
+    let judgeCalls = 0;
+    let n = 0;
+    const router = createProviderRouter({
+      adapters: [
+        createMockAdapter({
+          script: async function* () {
+            n += 1;
+            if (n === 1) {
+              yield {
+                type: "tool-call",
+                id: "tc_task",
+                name: "task",
+                arguments: { prompt: "look around" },
+              };
+              yield { type: "usage", inputTokens: 2, outputTokens: 1 };
+              yield { type: "done" };
+              return;
+            }
+            if (n === 2) {
+              yield { type: "text-delta", text: "investigated" };
+              yield { type: "usage", inputTokens: 5, outputTokens: 3 };
+              yield { type: "done" };
+              return;
+            }
+            yield { type: "text-delta", text: "ok" };
+            yield { type: "usage", inputTokens: 1, outputTokens: 1 };
+            yield { type: "done" };
+          },
+        }),
+      ],
+    });
+    const tools = new ToolRegistry();
+    for (const t of createBuiltinTools()) tools.register(t);
+    for await (const _e of runTurn({
+      session: session(),
+      userContent: "delegate",
+      router,
+      tools,
+      permission: { wait: async () => true },
+      judge: {
+        enabled: true,
+        async review() {
+          judgeCalls += 1;
+          return {
+            outcome: "allow",
+            scores: {
+              injection: { pYes: 0, confidence: 1 },
+              policy_violation: { pYes: 0, confidence: 1 },
+            },
+          };
+        },
+      },
+    })) {
+      /* drain */
+    }
+    expect(judgeCalls).toBe(1);
+  });
+
+  test("UserPromptSubmit runs after judge allow", async () => {
+    const hookCalls: string[] = [];
+    for await (const _e of runTurn({
+      session: session(),
+      userContent: "hi",
+      router: createProviderRouter({ adapters: [createMockAdapter()] }),
+      tools: new ToolRegistry(),
+      hooks: {
+        async run(event) {
+          hookCalls.push(event);
+          return { decision: "allow" as const };
+        },
+      },
+      judge: {
+        enabled: true,
+        async review() {
+          return {
+            outcome: "allow",
+            scores: {
+              injection: { pYes: 0.1, confidence: 1 },
+              policy_violation: { pYes: 0.1, confidence: 1 },
+            },
+          };
+        },
+      },
+    })) {
+      /* drain */
+    }
+    expect(hookCalls[0]).toBe("UserPromptSubmit");
+  });
 });

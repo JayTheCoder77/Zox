@@ -51,8 +51,9 @@ export function ZoxApp(props: ZoxAppProps) {
   const [slashCycleIndex, setSlashCycleIndex] = useState(0);
   const [busy, setBusy] = useState(false);
   const [permission, setPermission] = useState<{
+    kind: "tool" | "prompt";
     requestId: string;
-    toolName: string;
+    toolName?: string;
     toolArguments?: Record<string, unknown>;
     run: RunHandle;
   } | null>(null);
@@ -131,10 +132,32 @@ export function ZoxApp(props: ZoxAppProps) {
       }
       if (event.type === "tool.permission_required") {
         setPermission({
+          kind: "tool",
           requestId: event.requestId,
           toolName: event.name,
           toolArguments: event.arguments,
           run,
+        });
+      }
+      if (event.type === "prompt.permission_required") {
+        setPermission({
+          kind: "prompt",
+          requestId: event.requestId,
+          run,
+        });
+      }
+      if (event.type === "prompt.guardrail" && event.outcome === "skipped") {
+        appendEntry({
+          kind: "system",
+          id: nextId("system", idCounter.current),
+          text: `Judge skipped: ${event.reason ?? "unknown"}`,
+        });
+      }
+      if (event.type === "prompt.blocked") {
+        appendEntry({
+          kind: "system",
+          id: nextId("system", idCounter.current),
+          text: `Prompt blocked (${event.question}): ${event.reason}`,
         });
       }
       if (event.type === "skills.changed") {
@@ -323,6 +346,7 @@ export function ZoxApp(props: ZoxAppProps) {
       </Box>
       {permission ? (
         <PermissionDialog
+          kind={permission.kind}
           toolName={permission.toolName}
           toolArguments={permission.toolArguments}
           onRespond={(approved) => {

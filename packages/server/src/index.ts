@@ -126,6 +126,7 @@ export async function listen(opts?: {
         windowTokens: zoxConfig.context?.windowTokens,
       },
       instructions: zoxConfig.instructions,
+      judge: zoxConfig.judge,
       hooks: hookFiles[0],
       worktreeCleanup:
         opts?.worktreeCleanup ??

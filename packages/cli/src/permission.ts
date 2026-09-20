@@ -9,7 +9,11 @@ export async function promptPermission(summary?: string): Promise<boolean> {
     output: process.stdout,
   });
   try {
-    const prompt = summary ? `Allow ${summary}? [y/n] ` : "Allow tool? [y/n] ";
+    const prompt = summary?.includes("?")
+      ? `${summary} [y/n] `
+      : summary
+        ? `Allow ${summary}? [y/n] `
+        : "Allow tool? [y/n] ";
     const answer = await rl.question(prompt);
     const normalized = answer.trim().toLowerCase();
     return normalized === "y" || normalized === "yes";

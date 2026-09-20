@@ -14,6 +14,7 @@ export {
   type HookRunner,
   OVERFLOW_THRESHOLD,
   type PermissionResponder,
+  type PromptJudge,
   runTurn,
   type TurnObservability,
   type TurnRouter,

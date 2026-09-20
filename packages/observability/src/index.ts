@@ -1,3 +1,4 @@
+import { trace } from "@opentelemetry/api";
 import { createMetrics, type ZoxMetrics } from "./metrics.ts";
 import {
   assertOtlpEndpoint,
@@ -30,6 +31,13 @@ export type Observability = {
   recordSessionCost(usd: number): void;
   recordHookDuration(event: string, seconds: number): void;
   recordSkillLoad(source: "slash" | "tool" | "auto"): void;
+  recordJudge(info: {
+    latencyMs: number;
+    outcome: "allow" | "deny" | "ask" | "skipped";
+    question?: string;
+    reason?: string;
+    prompt?: string;
+  }): void;
   withTool<T>(name: string, fn: () => Promise<T>): Promise<T>;
   renderPrometheus(): string;
   shutdown(): Promise<void>;
@@ -40,7 +48,6 @@ export function createObservability(
 ): Observability {
   const enabled = opts.enabled ?? true;
   const recordContent = opts.recordContent ?? false;
-  void recordContent;
   const metrics = createMetrics();
 
   let installed = { owned: false as boolean };
@@ -96,6 +103,24 @@ export function createObservability(
     },
     recordSkillLoad(source: "slash" | "tool" | "auto") {
       metrics.recordSkillLoad(source);
+    },
+    recordJudge(info) {
+      metrics.recordJudge(info.outcome, info.latencyMs / 1000, info.question);
+      if (!tracingEnabled(enabled)) return;
+      const attributes: Record<string, string | number | boolean> = {
+        "zox.judge.outcome": info.outcome,
+        "zox.judge.skipped": info.outcome === "skipped",
+        "zox.judge.latency_ms": info.latencyMs,
+      };
+      if (info.question) attributes["zox.judge.question"] = info.question;
+      if (info.reason) attributes["zox.judge.reason"] = info.reason;
+      if (recordContent && info.prompt) {
+        attributes["zox.judge.prompt"] = info.prompt;
+      }
+      const span = trace
+        .getTracer("zox")
+        .startSpan("zox.judge.review", { attributes });
+      span.end();
     },
     async withTool<T>(name: string, fn: () => Promise<T>): Promise<T> {
       if (!tracingEnabled(enabled)) {

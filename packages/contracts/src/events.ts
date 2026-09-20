@@ -116,6 +116,43 @@ export const budgetExceededEventSchema = z.object({
   reason: z.enum(["max_turns", "max_usd"]),
 });
 
+export const judgeQuestionSchema = z.enum(["injection", "policy_violation"]);
+export type JudgeQuestion = z.infer<typeof judgeQuestionSchema>;
+
+export const promptGuardrailOutcomeSchema = z.enum([
+  "allow",
+  "deny",
+  "ask",
+  "skipped",
+]);
+
+export const promptGuardrailEventSchema = z.object({
+  type: z.literal("prompt.guardrail"),
+  sessionId: z.string(),
+  outcome: promptGuardrailOutcomeSchema,
+  question: judgeQuestionSchema.optional(),
+  pYes: z.number().optional(),
+  confidence: z.number().optional(),
+  reason: z.string().optional(),
+});
+
+export const promptBlockedEventSchema = z.object({
+  type: z.literal("prompt.blocked"),
+  sessionId: z.string(),
+  question: judgeQuestionSchema,
+  reason: z.string(),
+  pYes: z.number(),
+  confidence: z.number(),
+});
+
+export const promptPermissionRequiredEventSchema = z.object({
+  type: z.literal("prompt.permission_required"),
+  sessionId: z.string(),
+  requestId: z.string(),
+  question: judgeQuestionSchema.optional(),
+  reason: z.string().optional(),
+});
+
 export const zoxEventSchema = z.discriminatedUnion("type", [
   sessionStatusEventSchema,
   messageDeltaEventSchema,
@@ -131,6 +168,9 @@ export const zoxEventSchema = z.discriminatedUnion("type", [
   errorEventSchema,
   skillsChangedEventSchema,
   budgetExceededEventSchema,
+  promptGuardrailEventSchema,
+  promptBlockedEventSchema,
+  promptPermissionRequiredEventSchema,
 ]);
 
 export type ZoxEvent = z.infer<typeof zoxEventSchema>;

@@ -14,6 +14,13 @@ const providerSchema = z.object({
     .optional(),
 });
 
+const bandConfigSchema = z.strictObject({
+  denyMinYes: z.number().min(0).max(1).optional(),
+  denyMinConfidence: z.number().min(0).max(1).optional(),
+  askMinYes: z.number().min(0).max(1).optional(),
+  askMinConfidence: z.number().min(0).max(1).optional(),
+});
+
 export const zoxConfigSchema = z.object({
   model: z.string().optional(),
   agent: z.string().optional(),
@@ -103,6 +110,24 @@ export const zoxConfigSchema = z.object({
     })
     .optional(),
   providers: z.record(z.string(), providerSchema).optional(),
+  judge: z
+    .strictObject({
+      enabled: z.boolean().optional(),
+      apiKeyEnv: z.string().min(1).optional(),
+      baseURL: z.string().min(1).optional(),
+      model: z.string().min(1).optional(),
+      prompt: z
+        .strictObject({
+          enabled: z.boolean().optional(),
+          policy: z.string().optional(),
+          maxPromptChars: z.number().int().positive().optional(),
+          timeoutMs: z.number().int().positive().optional(),
+          injection: bandConfigSchema.optional(),
+          policyViolation: bandConfigSchema.optional(),
+        })
+        .optional(),
+    })
+    .optional(),
   observability: z
     .object({
       enabled: z.boolean().optional(),
