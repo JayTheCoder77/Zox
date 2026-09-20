@@ -195,12 +195,10 @@ export async function runSweLite(opts: SweLiteRunOpts): Promise<number> {
     throw new Error("swe-lite: no instance ids selected");
   }
 
+  const python =
+    (await resolvePythonWithModule("swebench", { repoRoot })) ?? "python";
   const loadInstances =
-    opts.loadInstances ??
-    defaultLoadInstances(
-      repoRoot,
-      (await resolvePythonWithModule("swebench", { repoRoot })) ?? "python",
-    );
+    opts.loadInstances ?? defaultLoadInstances(repoRoot, python);
   const instances = await loadInstances(ids);
   const runId = opts.runId ?? new Date().toISOString().replaceAll(/[:.]/g, "-");
   const resultsDir = resolve(
