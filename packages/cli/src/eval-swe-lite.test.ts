@@ -256,6 +256,14 @@ describe("eval policy", () => {
     });
     expect(bin).toBe("/repo/.venv/bin/python");
   });
+
+  test("missing python bins are skipped instead of throwing ENOENT", async () => {
+    const bin = await resolvePythonWithModule("swebench", {
+      repoRoot: "/no-such-zox-eval-root",
+      env: {},
+    });
+    expect(bin === undefined || typeof bin === "string").toBe(true);
+  });
 });
 
 describe("runSweLite", () => {

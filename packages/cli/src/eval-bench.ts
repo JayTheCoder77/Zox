@@ -76,11 +76,16 @@ export async function resolvePythonWithModule(
   const tryImport =
     opts.tryImport ??
     (async (bin: string) => {
-      const proc = Bun.spawn([bin, "-c", `import ${mod}`], {
-        stdout: "ignore",
-        stderr: "ignore",
-      });
-      return (await proc.exited) === 0;
+      try {
+        const proc = Bun.spawn([bin, "-c", `import ${mod}`], {
+          stdout: "ignore",
+          stderr: "ignore",
+        });
+        return (await proc.exited) === 0;
+      } catch {
+        // Missing .venv/python (common on CI) must not throw ENOENT.
+        return false;
+      }
     });
   for (const bin of pythonCandidates(opts.repoRoot, opts.env ?? process.env)) {
     if (await tryImport(bin)) return bin;
