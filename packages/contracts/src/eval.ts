@@ -21,4 +21,8 @@ export type EvalRunSummary = {
   turns: number;
   usd: number | null;
   traceId?: string;
+  trial?: number;
+  latencyMs?: number;
+  toolCalls?: number;
+  toolFailures?: number;
 };

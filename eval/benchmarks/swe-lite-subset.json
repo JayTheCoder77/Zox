@@ -1,0 +1,14 @@
+{
+  "instance_ids": [
+    "django__django-11099",
+    "sympy__sympy-20590",
+    "astropy__astropy-12907",
+    "matplotlib__matplotlib-23299",
+    "scikit-learn__scikit-learn-13439",
+    "pytest-dev__pytest-7490",
+    "pylint-dev__pylint-4551",
+    "requests__requests-2317",
+    "sphinx-doc__sphinx-8595",
+    "flask__flask-4045"
+  ]
+}

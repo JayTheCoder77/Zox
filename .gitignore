@@ -11,3 +11,9 @@ coverage
 .worktrees
 .superpowers
 eval/results/
+eval/benchmarks/cache/
+jobs/
+eval-*.tar.gz
+__pycache__/
+logs/run_evaluation/
+openrouter__*.json

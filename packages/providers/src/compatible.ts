@@ -83,15 +83,33 @@ function toModelMessages(messages: ChatMessage[]): ModelMessage[] {
   });
 }
 
+export function toStreamTextPrompt(messages: ChatMessage[]): {
+  instructions?: Array<{ role: "system"; content: string }>;
+  messages: ModelMessage[];
+} {
+  const modelMessages = toModelMessages(messages);
+  const instructions = modelMessages.filter(
+    (message): message is { role: "system"; content: string } =>
+      message.role === "system",
+  );
+  const rest = modelMessages.filter((message) => message.role !== "system");
+  return {
+    instructions: instructions.length > 0 ? instructions : undefined,
+    messages: rest,
+  };
+}
+
 export async function* streamLanguageModelToEvents(
   params: StreamChatParams,
   resolveModel: (
     modelId: string,
   ) => ReturnType<ReturnType<typeof createOpenAI>>,
 ): AsyncIterable<StreamEvent> {
+  const prompt = toStreamTextPrompt(params.messages);
   const result = streamText({
     model: resolveModel(params.model),
-    messages: toModelMessages(params.messages),
+    instructions: prompt.instructions,
+    messages: prompt.messages,
     tools: toolsFromSchemas(params.tools),
     abortSignal: params.abortSignal,
   });

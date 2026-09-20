@@ -125,6 +125,35 @@ describe("parseArgs", () => {
     expect(parseArgs(["--timeout-ms", "120000"]).flags.timeoutMs).toBe(120000);
   });
 
+  test("parses eval bench flags", () => {
+    expect(
+      parseArgs([
+        "eval",
+        "swe-lite",
+        "--instance-id",
+        "a",
+        "--instance-id",
+        "b",
+        "--limit",
+        "2",
+        "--skip-eval",
+        "--k",
+        "3",
+        "--jobs-dir",
+        "./tb",
+        "--task",
+        "fix-git",
+      ]).flags,
+    ).toMatchObject({
+      instanceIds: ["a", "b"],
+      limit: 2,
+      skipEval: true,
+      k: 3,
+      jobsDir: "./tb",
+      tasks: ["fix-git"],
+    });
+  });
+
   test("parseArgs legacy", () => {
     const parsed = parseArgs([
       "export",
