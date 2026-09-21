@@ -1,5 +1,6 @@
 export type { AnthropicAdapterOptions } from "./anthropic.ts";
 export { createAnthropicAdapter } from "./anthropic.ts";
+export { lookupContextWindow } from "./catalog.ts";
 export {
   createOpenAICompatibleAdapter,
   type OpenAICompatibleAdapterOptions,

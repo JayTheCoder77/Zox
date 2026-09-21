@@ -71,6 +71,64 @@ describe("runTurn", () => {
     });
   });
 
+  test("uses the model catalog window for openrouter gpt-4.1", async () => {
+    const sess = session();
+    sess.model = "openrouter/openai/gpt-4.1";
+    const router = createProviderRouter({
+      adapters: [{ ...createMockAdapter(), id: "openrouter" }],
+    });
+    const events = [];
+    for await (const event of runTurn({
+      session: sess,
+      userContent: "ping",
+      router,
+      tools: new ToolRegistry(),
+      ids: {
+        messageId: () => "msg_asst",
+        turnId: () => "turn_1",
+        toolCallId: () => "tc_1",
+        requestId: () => "req_1",
+      },
+    })) {
+      events.push(event);
+    }
+    expect(events[1]).toMatchObject({
+      type: "context.estimated",
+      windowKnown: true,
+      windowTokens: 1_047_576,
+    });
+    expect(events.some((event) => event.type === "error")).toBe(false);
+  });
+
+  test("config windowTokens still overrides the model catalog", async () => {
+    const sess = session();
+    sess.model = "openrouter/openai/gpt-4.1";
+    const router = createProviderRouter({
+      adapters: [{ ...createMockAdapter(), id: "openrouter" }],
+    });
+    const events = [];
+    for await (const event of runTurn({
+      session: sess,
+      userContent: "ping",
+      router,
+      tools: new ToolRegistry(),
+      context: { windowTokens: 100 },
+      ids: {
+        messageId: () => "msg_asst",
+        turnId: () => "turn_1",
+        toolCallId: () => "tc_1",
+        requestId: () => "req_1",
+      },
+    })) {
+      events.push(event);
+    }
+    expect(events[1]).toMatchObject({
+      type: "context.estimated",
+      windowKnown: true,
+      windowTokens: 100,
+    });
+  });
+
   test("executes a read tool call then completes with assistant text", async () => {
     const root = await mkdtemp(join(tmpdir(), "zox-loop-"));
     await Bun.write(join(root, "a.ts"), "hello");
