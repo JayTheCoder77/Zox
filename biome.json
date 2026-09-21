@@ -11,7 +11,8 @@
       "!!**/.zox",
       "!!**/.worktrees",
       "!!**/dist",
-      "!!**/openrouter__*.json"
+      "!!**/openrouter__*.json",
+      "!!**/model-windows.json"
     ]
   }
 }

@@ -11,11 +11,12 @@ import {
 import type { ZoxEvent } from "@zox/contracts";
 import type { PromptJudge, PromptJudgeResult } from "@zox/judge";
 import { parsePlan } from "@zox/memory";
-import type {
-  ChatMessage,
-  StreamChatParams,
-  StreamEvent,
-  ToolCall,
+import {
+  type ChatMessage,
+  lookupContextWindow,
+  type StreamChatParams,
+  type StreamEvent,
+  type ToolCall,
 } from "@zox/providers";
 import {
   activateSkill,
@@ -359,6 +360,7 @@ async function* runTurnBody(opts: {
   const estimated = estimateTurnTokens({ ...opts, promptLayers });
   const hardOverflow = isHardOverflow(
     estimated,
+    opts.session.model,
     opts.context,
     opts.overflowThreshold,
   );
@@ -712,12 +714,20 @@ function estimateTurnTokens(opts: {
     : estimateSession(assembled);
 }
 
+function resolvedWindowTokens(
+  model: string,
+  context?: ContextEngine,
+): number | undefined {
+  return context?.windowTokens ?? lookupContextWindow(model);
+}
+
 function isHardOverflow(
   estimated: number,
+  model: string,
   context?: ContextEngine,
   overflowThreshold?: number,
 ): boolean {
-  const knownWindow = context?.windowTokens;
+  const knownWindow = resolvedWindowTokens(model, context);
   if (knownWindow === undefined) {
     return estimated > UNKNOWN_WINDOW_TOKENS * UNKNOWN_OVERFLOW_RATIO;
   }
@@ -733,7 +743,7 @@ async function* emitContextWarnings(
   overflowThreshold?: number,
 ): AsyncIterable<ZoxEvent> {
   observability?.recordContextEstimated?.(estimated);
-  const knownWindow = context?.windowTokens;
+  const knownWindow = resolvedWindowTokens(session.model, context);
   yield {
     type: "context.estimated",
     sessionId: session.id,
@@ -752,7 +762,7 @@ async function* emitContextWarnings(
       };
     }
   }
-  if (isHardOverflow(estimated, context, overflowThreshold)) {
+  if (isHardOverflow(estimated, session.model, context, overflowThreshold)) {
     yield {
       type: "context.overflow",
       sessionId: session.id,
