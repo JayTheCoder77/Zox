@@ -1,0 +1,43 @@
+---
+title: Permissions
+description: Tool and prompt permission gates before execution.
+---
+
+# Permissions
+
+Two different “asks”:
+
+1. **Tool permission** — `tool.permission_required`. Should this `bash`/`write`/MCP call run? **`--auto-approve`** can answer yes.
+2. **Prompt permission** — `prompt.permission_required`. Jev (or equivalent) is unsure about the **user prompt**. **`--auto-approve` does not auto-yes this.**
+
+## Tool pipeline
+
+Each tool call follows:
+
+**permission → PreToolUse hooks → sandbox → execute → PostToolUse**
+
+See [Hooks](/docs/hooks) and [Sandbox](/docs/sandbox).
+
+## Ruleset example
+
+Project policy; evaluation order **deny → allow list → default → ask**:
+
+```json
+{
+  "bash": { "default": "ask", "allow": ["bun test", "git status*"] },
+  "write": { "default": "ask" },
+  "read": { "default": "allow" }
+}
+```
+
+If nobody is listening for a permission request, the loop treats it like a denial.
+
+## HTTP API
+
+`POST /sessions/{id}/permissions/{requestId}` with `{ "approved": true | false }` — used for **both** tool and prompt waits.
+
+## Related
+
+- [Prompt guardrail](/docs/prompt-guardrail) — Jev ask vs deny
+- [TUI and REPL](/docs/tui) — how you approve in the terminal
+- [CLI reference](/docs/cli) — `--auto-approve`

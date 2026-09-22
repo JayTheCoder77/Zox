@@ -1,0 +1,76 @@
+---
+title: Quickstart
+description: A ten-minute first session in your repo.
+---
+
+# Quickstart
+
+This walkthrough matches the README “ten-minute first session” and [docs.md](https://github.com/JayTheCoder77/Zox/blob/main/docs.md) §3.
+
+## 1. Pick a model
+
+Zox model IDs look like `provider/model`. Export a key and pass `--model`:
+
+```sh
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+If the project has `.zox/config.json` with a `model` field, you can omit `--model` on first launch.
+
+Without keys, use **`mock/echo`** (plumbing only, not real coding).
+
+## 2. Start Zox in a project
+
+```sh
+cd /path/to/your/repo
+zox --model anthropic/claude-sonnet-4-20250514
+# one-shot without a global install:
+bunx zox-code --model anthropic/claude-sonnet-4-20250514
+```
+
+Expect:
+
+- An embedded server on **127.0.0.1:8787** (or `--port`).
+- A random **bearer token** unless `ZOXX_SERVER_TOKEN` is set.
+- **Ink TUI** on a real terminal; piped / non-TTY sessions fall back to a **line REPL**.
+- `--no-tui` forces the REPL.
+
+Optional project defaults in `.zox/config.json` (model, agent, sandbox) are picked up automatically when you create a session.
+
+## 3. Talk to it
+
+Type a normal English task. Example: “List the top-level files and summarize README in two sentences.”
+
+The model should call `ls` / `read`. **Read** tools are often allowed; **write** and **bash** typically **ask for permission** until you approve—that is your first permission prompt.
+
+Slash commands start with `/`. See [Slash commands](/docs/slash-commands).
+
+## 4. Understand the worktree
+
+<Callout kind="note">
+**Default sandbox is `worktree`.** Zox does **not** edit your current checkout in place.
+</Callout>
+
+1. Creates `.zox/worktrees/<sessionId>` with `git worktree`.
+2. Runs file and shell tools **inside that tree**.
+3. Leaves the worktree around by default so you can review and merge.
+
+Review with `git` in that directory, then merge or cherry-pick into your main tree.
+
+To edit the files you already have open in your editor:
+
+```sh
+zox --sandbox host
+```
+
+See [Sandbox](/docs/sandbox).
+
+## 5. Stop
+
+`/exit` or Ctrl+C. The embedded server stops with the TUI. Headless `zox serve` keeps running until you kill it.
+
+## Read next
+
+- [CLI reference](/docs/cli)
+- [Sessions](/docs/sessions)
+- [Permissions](/docs/permissions)

@@ -1,0 +1,38 @@
+---
+title: TUI and REPL
+description: Ink TUI, line REPL, and permission dialogs.
+---
+
+# TUI and REPL
+
+## TUI
+
+On a real terminal you get the **Ink TUI** (`packages/tui`, Ink 5 + React). It shows the transcript, streaming deltas, tool cards, and permission dialogs.
+
+Two kinds of permission UI:
+
+- **Tool permission** — “Allow this tool?”
+- **Prompt permission** (`prompt.permission_required`) — “Submit this prompt anyway?” (Jev **ask** flow)
+
+Events such as `prompt.blocked` and `prompt.guardrail` with `skipped` surface as warnings in the UI.
+
+## REPL
+
+Used when stdin/stdout are not a TTY, when you pass **`--no-tui`**, or when TUI import fails (`packages/cli/src/repl.ts`). Line-oriented; slash commands still work.
+
+Permissions use stdin y/n (`packages/cli/src/permission.ts`).
+
+Non-interactive automation should use **`@zox/sdk`** and an explicit permission policy rather than hoping a human is at the keyboard. See [Server, OpenAPI, and SDK](/docs/sdk).
+
+## Choosing a mode
+
+| Situation | What you get |
+|-----------|----------------|
+| TTY, default flags | Ink TUI |
+| Piped / non-TTY | Line REPL |
+| `--no-tui` | Line REPL |
+
+## Related
+
+- [Permissions](/docs/permissions) — tool vs prompt asks
+- [Prompt guardrail](/docs/prompt-guardrail) — Jev and `--auto-approve`

@@ -1,0 +1,40 @@
+---
+title: Slash commands
+description: Built-in / commands and project templates.
+---
+
+# Slash commands
+
+Built-in names (`packages/cli/src/parse.ts`):
+
+`help` `model` `agent` `compact` `context` `usage` `clear` `mcp` `skill` `skills` `cancel` `sandbox` `trace` `remember` `revert` `exit`
+
+In the TUI/REPL, prefix with `/`:
+
+```text
+/help
+/model anthropic/claude-sonnet-4-20250514
+/agent build
+/sandbox host
+/exit
+```
+
+## MCP shortcuts
+
+`/mcp add <name> <command> [args…]` and `/mcp remove <name>` are handled in the CLI. Other slash names go to `session.command` on the server.
+
+## Project commands
+
+Put Markdown templates in **`.zox/commands/<name>.md`**. Example from `examples/commands/explain.md`:
+
+```markdown
+Explain $ARGUMENTS in one sentence.
+```
+
+Typing `/explain the parser` expands to a user message.
+
+## Related
+
+- [CLI reference](/docs/cli) — cheat sheet list
+- [MCP](/docs/mcp)
+- [Skills](/docs/skills)

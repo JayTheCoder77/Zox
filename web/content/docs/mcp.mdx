@@ -1,0 +1,38 @@
+---
+title: MCP
+description: Model Context Protocol servers as extra tools.
+---
+
+# MCP
+
+Configure stdio MCP servers under **`mcp.servers`** in config:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "github": {
+        "command": "bunx",
+        "args": ["@modelcontextprotocol/server-github"],
+        "env": { "GITHUB_TOKEN": "${GITHUB_TOKEN}" }
+      }
+    }
+  }
+}
+```
+
+`${GITHUB_TOKEN}` is expanded from the environment for MCP env values.
+
+Runtime (`packages/mcp`): stdio transport, tools namespaced onto the registry (e.g. `mcp_<server>_<tool>`). HTTP: `POST /mcp/servers`, `DELETE /mcp/servers/{name}`.
+
+MCP write-like tools should still hit the permission gate.
+
+## In-session
+
+`/mcp add <name> <command> [args…]` and `/mcp remove <name>` in the CLI. See [Slash commands](/docs/slash-commands).
+
+## Related
+
+- [Configuration](/docs/configuration)
+- [Tools](/docs/tools)
+- [Troubleshooting](/docs/troubleshooting) — MCP tools missing

@@ -1,0 +1,72 @@
+---
+title: Architecture
+description: Server-centric agent loop and monorepo packages.
+---
+
+# Architecture
+
+**Rule:** `cli` and `sdk` talk to the **HTTP contract** (`@zox/contracts` + OpenAPI). They should not import agent-loop internals from `@zox/core`.
+
+The **server is the source of truth**. The TUI does not run tools itself; it asks the server and renders events.
+
+## High-level flow
+
+```
+TUI / REPL / @zox/sdk
+        │
+        ▼
+  packages/server (Hono)
+        │
+        ├── packages/core      agent loop (runTurn)
+        ├── packages/context   tokens, assembly, compact
+        ├── packages/providers BYOK adapters (Vercel AI SDK)
+        ├── packages/tools     built-in + MCP-namespaced tools
+        ├── packages/sandbox   path jail, denylist, worktrees
+        ├── packages/hooks     .zox/hooks.json runner
+        ├── packages/judge     optional Jev prompt review
+        ├── packages/session   SQLite
+        ├── packages/memory    durable notes, auto-summaries
+        ├── packages/mcp       stdio MCP pool
+        ├── packages/skills    SKILL.md discovery
+        └── packages/observability  OTel + Prometheus
+```
+
+## Agent loop (simplified)
+
+```
+queue user message
+optional Jev review (human turns only)
+UserPromptSubmit hooks
+while not done:
+  assemble context
+  stream model
+  if tool calls:
+    permission → PreToolUse → sandbox → tool → PostToolUse
+  else:
+    finish turn (idle)
+compaction / budgets as configured
+```
+
+Session status values include: `idle`, `running`, `compacting`, `awaiting_permission`, `error`.
+
+## Package map (develop this repo)
+
+| Package | Role |
+|---------|------|
+| `contracts` | Zod events, OpenAPI-aligned types |
+| `core` | Agent loop |
+| `server` | Hono HTTP, SSE, WebSocket |
+| `cli` / `tui` | User-facing terminal |
+| `sdk` | Programmatic client |
+| `providers` / `tools` / `sandbox` / `hooks` / `judge` | Harness pieces |
+| `session` / `memory` / `context` / `observability` | Persistence and budgets |
+
+Conventions: TypeScript, Biome, `bun test`. Clients should depend on **contracts + HTTP**, not `core` internals.
+
+Formal product contracts: [spec/](https://github.com/JayTheCoder77/Zox/tree/main/spec) on GitHub (`spec/architecture.md`, `spec/clients.md`, sandbox, hooks, providers, …).
+
+## Related
+
+- [Overview](/docs) — mental model
+- [Server, OpenAPI, and SDK](/docs/sdk)
+- [Sessions](/docs/sessions)

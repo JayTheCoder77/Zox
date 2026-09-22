@@ -1,0 +1,40 @@
+---
+title: Sessions
+description: Create, resume, cancel, and export workspace sessions.
+---
+
+# Sessions
+
+A session is scoped to a **workspace root** (and typically a git root for worktrees). It holds messages, plan todos, usage, and persisted state in SQLite via `@zox/session`.
+
+## Create and resume
+
+- **Create (interactive):** start `zox` without `--session`.
+- **Resume:** `zox --session <id>`.
+- **Reset conversation:** `/clear` in REPL/TUI (closes the session and opens a new one with the same defaults).
+
+## Status values
+
+Session status values include: `idle`, `running`, `compacting`, `awaiting_permission`, `error`.
+
+## Cancellation
+
+`/cancel` or `POST /sessions/{id}/cancel`.
+
+## Export
+
+```sh
+zox export session <sessionId>
+zox export session <sessionId> --include-memory
+```
+
+The message graph includes user, assistant, tool calls/results, system, and compaction summaries.
+
+## Embedded vs headless
+
+Starting `zox` without `--url` runs an embedded server on **127.0.0.1:8787** (or `--port`) with a random bearer token unless `ZOXX_SERVER_TOKEN` is set. `/exit` or Ctrl+C stops the embedded server with the TUI. **`zox serve`** keeps running until you kill it.
+
+## Related
+
+- [Sandbox](/docs/sandbox) — where file tools run
+- [Memory and context](/docs/memory) — what persists across turns

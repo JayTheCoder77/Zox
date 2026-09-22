@@ -1,0 +1,73 @@
+---
+title: Models and BYOK
+description: provider/model IDs, env vars, and mock/echo.
+---
+
+# Models and BYOK
+
+You bring **your own keys**. Zox is local-first: the server typically binds `127.0.0.1`. Canonical model id: **`<providerId>/<modelId>`**.
+
+## Built-in providers
+
+| Provider id | Env | Adapter |
+|-------------|-----|---------|
+| `anthropic` | `ANTHROPIC_API_KEY` | Anthropic |
+| `openai` | `OPENAI_API_KEY` | OpenAI |
+| `google` | `GOOGLE_API_KEY` or `GEMINI_API_KEY` | Google |
+| `groq` | `GROQ_API_KEY` | OpenAI-compatible (`https://api.groq.com/openai/v1`) |
+| `openrouter` | `OPENROUTER_API_KEY` | OpenAI-compatible (`https://openrouter.ai/api/v1`) |
+| `mock` | none | `mock/echo` |
+| custom | `providers.<id>.apiKeyEnv` | `kind`: `openai` `anthropic` `google` `openai-compatible` |
+
+### Example `--model` values (README)
+
+| Env var | Example `--model` |
+|---------|-------------------|
+| `ANTHROPIC_API_KEY` | `anthropic/claude-sonnet-4-20250514` |
+| `OPENAI_API_KEY` | `openai/gpt-4.1` |
+| `GOOGLE_API_KEY` or `GEMINI_API_KEY` | `google/gemini-2.5-pro` |
+| `GROQ_API_KEY` | `groq/llama-3.3-70b-versatile` |
+| `OPENROUTER_API_KEY` | `openrouter/anthropic/claude-3.5-sonnet` |
+
+## Key resolution
+
+1. Process environment (built-in names).
+2. Extra `config.providers` entries if their env var is set.
+3. Never persist raw keys in SQLite.
+
+Providers are also **auto-detected from environment variables**. You do not have to list them in JSON unless you want a custom `baseURL` or env var name.
+
+## Custom OpenAI-compatible server
+
+```json
+{
+  "providers": {
+    "lmstudio": {
+      "kind": "openai-compatible",
+      "baseURL": "http://127.0.0.1:1234/v1",
+      "apiKeyEnv": "LMSTUDIO_API_KEY"
+    }
+  }
+}
+```
+
+Then `--model lmstudio/your-local-name`.
+
+## mock/echo
+
+Without keys you can start with **`mock/echo`** (default model if config does not set one). The mock is for tests and plumbing, not real coding.
+
+```sh
+zox --model mock/echo
+```
+
+## Mid-session changes
+
+Switch model: `/model anthropic/claude-sonnet-4-20250514`.
+
+Usage: `/usage`, SSE `usage` events, SDK helpers. Estimated USD only if the catalog has prices.
+
+## Related
+
+- [Configuration](/docs/configuration) — `model` in `.zox/config.json`
+- [Install](/docs/install) — export keys before starting Zox

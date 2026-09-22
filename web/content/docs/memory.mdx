@@ -1,0 +1,44 @@
+---
+title: Memory and context
+description: Plan, working memory, compaction, and durable notes.
+---
+
+# Memory and context
+
+Do not mix these layers:
+
+| Layer | Mechanism | Lifetime |
+|-------|-----------|----------|
+| Plan | `todowrite` full list | Session (protected in compact) |
+| Working | Messages in the window | Turn / until compact |
+| Prior-state | Compact recovery block | Session |
+| Episodic | SQLite transcript | Durable audit |
+| Durable | `.zox/memory/*.md`, `/remember`, `memory_write` | Cross-session |
+| Semantic | Code index | FTS/BM25 today |
+
+## Durable memory
+
+**Auto-summarize** (default on): on `SessionEnd`, write into `.zox/memory/auto/`. Disable with `"memory": { "autoSummarize": false }` or `ZOXX_MEMORY_AUTO_SUMMARIZE=0`.
+
+`/remember` stores an explicit note. Startup can inject recent memories (`startupInjectCount`).
+
+Tools: `memory_write` / `memory_search`. See [Tools](/docs/tools).
+
+## Context, compaction, budgets
+
+The context engine estimates tokens, assembles the next request, and can compact when near the window.
+
+- `/context` — breakdown.
+- `/compact` — run compaction now.
+- `budget.preCompactTokenThreshold` — soft mark (set what fits your model).
+- `budget.maxTurns` / `budget.maxUsdPerTask` — stop the loop.
+
+Overflow: threshold × `windowTokens`. Optional **prune** of old tool bodies (protect plan, skills, recent errors). Details: `spec/context.md` on GitHub.
+
+Hooks: `PreCompact` / `PostCompact`. See [Hooks](/docs/hooks).
+
+## Related
+
+- [Configuration](/docs/configuration) — `context.*`, `budget.*`, `memory.*`
+- [Sessions](/docs/sessions) — export with `--include-memory`
+- [Slash commands](/docs/slash-commands) — `/context`, `/compact`, `/remember`

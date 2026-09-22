@@ -1,0 +1,58 @@
+---
+title: Overview
+description: Zox is a local coding agent harness—not a hosted chat product.
+---
+
+# Overview
+
+Zox is a **local coding agent harness**: a program that talks to an LLM, lets that model use tools on your repo (read files, edit, run shell), and wraps every step in **permissions, sandboxing, sessions, and observability**.
+
+It is **not** a hosted chat product. You bring your own API keys (BYOK). The agent loop lives in a server on your machine. The terminal UI and SDK are thin clients of that same server.
+
+## Mental model
+
+Inspired by the terminal-native coding agent pattern: **plan → act → observe → recover**.
+
+1. You type a request.
+2. Optionally, a **prompt guardrail** (TypeSafe Jev) can allow, ask you, or deny that prompt. Off by default.
+3. **UserPromptSubmit hooks** can rewrite or block the prompt.
+4. The **model** streams a reply and may emit **tool calls**.
+5. Each tool goes through **permission → PreToolUse hooks → sandbox → execute → PostToolUse**.
+6. Tool results go back into the conversation. The loop repeats until the model stops or you cancel.
+7. Usage, traces, and the transcript are stored for the **session**.
+
+The **server is the source of truth**. The TUI does not run tools itself; it asks the server and renders events.
+
+```
+You (TUI / REPL / SDK)
+        │  HTTP + SSE or WebSocket
+        ▼
+   Zox server  ──► LLM provider (Anthropic, OpenAI, …)
+        │
+        ├── tools (files, bash, MCP, …)
+        ├── sandbox (worktree / host / …)
+        ├── hooks
+        └── SQLite session store
+```
+
+## Surfaces
+
+| Surface | What it is |
+|---------|------------|
+| **`zox`** | Interactive terminal session (TUI if you have a TTY, otherwise a line REPL) |
+| **`zox serve`** | Headless HTTP + SSE/WebSocket server |
+| **`@zox/sdk`** | Typed client for scripts and other UIs (monorepo / `zox serve`; **not on npm yet**) |
+
+Built-in **tools** include `read`, `write`, `edit`, `bash`, `grep`, `glob`, `ls`, `webfetch`, `todowrite`, `skill`, `memory_*`, `code_search`, and `task`. Safety features include permission prompts, git **worktree** sandbox by default, path jail, and hook policy. You can extend Zox with MCP servers, user skills, slash commands, and `.zox/hooks.json`.
+
+## Compared to a chat wrapper
+
+Chat UIs send text and maybe a few function calls. Zox treats permissions, sandbox tiers, hooks, MCP, skills, and token budgets as first-class.
+
+## Get started
+
+Install the published CLI with Bun, set a provider key (or use `mock/echo` to smoke-test), and start in your project:
+
+See [Install](/docs/install) and [Quickstart](/docs/quickstart).
+
+For the full reference in this repository, see [docs.md](https://github.com/JayTheCoder77/Zox/blob/main/docs.md) and [spec/](https://github.com/JayTheCoder77/Zox/tree/main/spec).

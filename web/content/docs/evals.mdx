@@ -1,0 +1,69 @@
+---
+title: Evals
+description: Fixture, private, SWE-lite, and Terminal-Bench commands.
+---
+
+# Evals
+
+See also `eval/tasks/readme.md` and `spec/eval.md` in the [Zox repo](https://github.com/JayTheCoder77/Zox).
+
+## Commands (README)
+
+| Command | Purpose |
+|---------|---------|
+| `zox eval run` | Fixture evals (default: mock tasks) |
+| `zox eval private` | Hidden-grader private suite |
+| `zox eval swe-lite` | SWE-bench Lite subset (Docker) |
+| `zox eval terminal-bench` | Terminal-Bench 2.0 (Docker) |
+| `zox eval archive` | Archive last eval artifacts |
+
+## Fixture suite
+
+YAML tasks with `expect.stdoutIncludes` and/or `expect.files`.
+
+```sh
+zox eval run                          # eval/tasks/mock + mock/echo
+zox eval run eval/tasks/live --model openai/gpt-4.1
+```
+
+`--max-turns` (live default 50), `--timeout-ms` (default 300000), `--sandbox`.
+
+## Private suite
+
+`eval/private/<id>/`: `README.md` prompt, `repo/` start tree, hidden `tests/` + `grader.sh`. Agent never sees hidden tests. Default `k=3`.
+
+```sh
+zox eval private --model openai/gpt-4.1 --k 1
+```
+
+Artifacts: `eval/results/private/<task>/trial-N/`.
+
+## SWE-bench Lite
+
+Needs Docker and `swebench` in a venv. Real `--model` (not `mock/*`).
+
+```sh
+zox eval swe-lite --model openai/gpt-4.1 --limit 1
+zox eval swe-lite --model openai/gpt-4.1 --skip-eval
+```
+
+## Terminal-Bench 2.0
+
+Docker + Harbor. Adapter: `eval/adapters/harbor/zox_agent.py`.
+
+```sh
+zox eval terminal-bench --model openai/gpt-4.1 --limit 1
+```
+
+## Archive
+
+```sh
+zox eval archive
+```
+
+Eval-only flags (`--limit`, `--k` / `--n-attempts`, `--skip-eval`, `--instance-id`, `--task`, `--jobs-dir`) are listed in [CLI reference](/docs/cli).
+
+## Related
+
+- [CLI reference](/docs/cli) — global `--max-turns`, `--timeout-ms`, `--auto-approve`
+- [Prompt guardrail](/docs/prompt-guardrail) — eval and prompt-ask

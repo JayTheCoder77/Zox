@@ -1,0 +1,30 @@
+---
+title: Agents
+description: build and plan tool profiles.
+---
+
+# Agents
+
+MVP agent profiles control which tools are available and how writes behave (`spec/tools-extensibility.md`).
+
+| Agent | Typical tools | Writes / bash |
+|-------|----------------|---------------|
+| `build` | Full built-in set | Permissioned (ask/allow) |
+| `plan` | `read`, `grep`, `glob`, `ls`, `skill` | No write/bash |
+
+## CLI and config
+
+Start read-only exploration:
+
+```sh
+zox --agent plan
+```
+
+Switch when you want edits: `/agent build`.
+
+Default in minimal project config is often `"agent": "build"` (see [Configuration](/docs/configuration)).
+
+## Related
+
+- [Tools](/docs/tools)
+- [Permissions](/docs/permissions)
