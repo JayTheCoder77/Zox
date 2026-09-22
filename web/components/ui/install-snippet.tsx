@@ -3,13 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 
-type TabId = "bun" | "bunx" | "pin";
+type TabId = "bun" | "npm" | "bunx" | "pin";
 
 const TABS: { id: TabId; label: string; code: string }[] = [
   {
     id: "bun",
     label: "bun",
     code: `bun add -g zox-code
+zox --model openai/gpt-4.1`,
+  },
+  {
+    id: "npm",
+    label: "npm",
+    code: `npm install -g zox-code
 zox --model openai/gpt-4.1`,
   },
   {
@@ -31,6 +37,7 @@ export function InstallSnippet() {
   const [indicator, setIndicator] = useState({ left: 0, width: 0 });
   const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({
     bun: null,
+    npm: null,
     bunx: null,
     pin: null,
   });
