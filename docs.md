@@ -56,31 +56,40 @@ You bring **your own keys**. Zox is local-first: the server typically binds `127
 
 ## 2. Install and run
 
-### From npm (`zox-code`)
+### From npm (`zox-code`) — recommended
+
+The published package is **[`zox-code` on npm](https://www.npmjs.com/package/zox-code)**. Install with Bun (the CLI bundle requires Bun ≥ 1.2):
 
 ```sh
 bun add -g zox-code
+zox --help
+
+# no global install
 bunx zox-code --sandbox host --model openai/gpt-4.1
 ```
 
-Requires **Bun ≥ 1.2**. The tarball is a single `dist/cli.js` bundle (`#!/usr/bin/env bun`). Bins: `zox` and `zox-code`.
+The npm tarball ships a single bundled **`dist/cli.js`** (`#!/usr/bin/env bun`). Bin names: **`zox`** and **`zox-code`** (same program). Version on npm matches `packages/zox-code/package.json` in this repo.
+
+**Not on npm:** `@zox/sdk` and other workspace packages. For automation against a running server, use HTTP/WebSocket per OpenAPI (`packages/server/openapi/openapi.yaml`) or clone this repo and import `@zox/sdk` from the monorepo (§21).
 
 ### From this repository (contributors)
 
-Use **[Bun](https://bun.sh)** for install, tests, and the CLI. Root `package.json` workspaces are `packages/*`. Do not introduce npm/pnpm as the primary toolchain.
+Use **[Bun](https://bun.sh)** for install, tests, and running from source. Root `package.json` workspaces are `packages/*`. The registry tarball is built from `packages/zox-code`; day-to-day development uses TypeScript entrypoints under `packages/cli`.
 
 ```sh
+git clone https://github.com/JayTheCoder77/Zox.git
+cd Zox
 bun install
 bun test
 bun run lint
 bun run typecheck
 bun run zox
-bun run build:cli    # writes packages/zox-code/dist/cli.js
+bun run build:cli    # writes packages/zox-code/dist/cli.js (same artifact npm publishes)
 ```
 
 ### Running the CLI from source
 
-From this repo:
+Equivalent to the npm bins while hacking on Zox:
 
 ```sh
 bun packages/cli/src/index.ts [flags] [subcommand]
@@ -88,17 +97,18 @@ bun packages/cli/src/index.ts [flags] [subcommand]
 bun run zox -- [flags] [subcommand]
 ```
 
-The CLI package bin is `zox` (`packages/cli/package.json`). Publishing to npm is planned (`bun publish`); until then, invoke the TypeScript entry with Bun.
+Release maintainers publish with `bun run publish:cli` from the repo root (`prepublishOnly` runs the bundle build).
 
 ### Workspace vs Zox checkout
 
-- **Zox checkout** — where the harness source lives.
+- **Zox checkout** — optional; only needed to develop Zox or use `@zox/sdk` from source.
 - **Workspace** — the project the agent should edit (`--workspace`, default `cwd`).
 
-You can run the Zox CLI against any other git repo:
+Point the installed CLI at any directory (git recommended for default worktree sandbox):
 
 ```sh
-bun /path/to/Zox/packages/cli/src/index.ts --workspace /path/to/app --model openai/gpt-4.1
+cd /path/to/your/app
+zox --workspace "$(pwd)" --model openai/gpt-4.1
 ```
 
 ---
@@ -120,8 +130,11 @@ Without keys you can still start a session with **`mock/echo`** (default model i
 
 ```sh
 cd /path/to/your/repo
-bun /path/to/Zox/packages/cli/src/index.ts --model openai/gpt-4.1
+zox --model openai/gpt-4.1
+# or: bunx zox-code --model openai/gpt-4.1
 ```
+
+If the project has `.zox/config.json` with a `model` field, you can omit `--model` on first launch.
 
 Expect:
 
@@ -746,6 +759,8 @@ Auth: `Authorization: Bearer <token>`.
 
 ### SDK
 
+**`@zox/sdk` is not published to npm** (only `zox-code` is). Use it from a clone of this repo (`bun install` in the monorepo), or call the HTTP/WebSocket API documented in `openapi.yaml` while `zox serve` (or an embedded session) is running.
+
 ```ts
 import { createZoxClient } from "@zox/sdk";
 
@@ -881,6 +896,9 @@ Zox/
 ---
 
 ## 25. Troubleshooting
+
+**`zox: command not found` after `bun add -g zox-code`**  
+Ensure Bun’s global bin directory is on your `PATH` (`bun pm bin -g`). Or skip a global install: `bunx zox-code …`.
 
 **Nothing useful happens / echo-only replies**  
 You are on `mock/echo`. Set a provider key and `--model`.
