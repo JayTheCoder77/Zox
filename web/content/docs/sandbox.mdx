@@ -1,0 +1,46 @@
+---
+title: Sandbox
+description: host, worktree, container, and remote isolation modes.
+---
+
+# Sandbox
+
+The sandbox is a **development guardrail**, not a hypervisor. Untrusted autonomy should use stronger isolation (container / remote tiers when those adapters are fully wired).
+
+| Mode | Isolation | When to use |
+|------|-----------|-------------|
+| `worktree` | **Default.** Git worktree under `.zox/worktrees/<sessionId>` | Daily interactive coding; keep main tree clean |
+| `host` | Path jail on the real workspace | You want the agent in your current files |
+| `container` | Docker/Podman (tier 2; see spec) | CI / less trusted tasks |
+| `remote` | E2B / Daytona-style (tier 3; see spec) | Stronger isolation |
+
+<Callout kind="note">
+Default sandbox is **`worktree`**. Zox does not edit your current checkout in place unless you choose `host`.
+</Callout>
+
+## Default path
+
+```text
+.zox/worktrees/<sessionId>/
+```
+
+Session start: `git worktree add` on a `zox/<sessionId>` branch (requires git). Non-git projects fall back to **`host`** with a warning unless configured otherwise.
+
+Session end: default **keep** the worktree (`sandbox.worktree.cleanup`: `keep` | `remove`). CLI flag **`--keep-worktree`** applies to agent-run style jobs.
+
+## Executor refusals
+
+Before spawn: executable denylist (`sudo`, `rm`, …), interpreter smuggling flags, shell metacharacters when not using a shell, **realpath** path jail (symlink escape resistant).
+
+## CLI
+
+```sh
+zox --sandbox host
+```
+
+In session: `/sandbox host`.
+
+## Related
+
+- [Quickstart](/docs/quickstart) — worktree vs `--sandbox host`
+- [Configuration](/docs/configuration) — `sandbox.mode`, `sandbox.worktree.cleanup`

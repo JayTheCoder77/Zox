@@ -1,0 +1,115 @@
+---
+title: CLI reference
+description: Commands, subcommands, and flags for the zox CLI.
+---
+
+# CLI reference
+
+Parsed in `packages/cli/src/index.ts` and `parse.ts`. Unknown `--flags` are ignored (not an error).
+
+## Interactive (default)
+
+No subcommand → start or attach, then TUI or REPL.
+
+```sh
+zox
+zox --model anthropic/claude-sonnet-4-20250514 --agent plan
+zox --workspace ~/src/app --sandbox host
+zox --url http://127.0.0.1:8787 --token "$ZOXX_SERVER_TOKEN"
+zox --session sess_...
+zox --no-tui --port 9000
+```
+
+Attach requires `--token` or `ZOXX_SERVER_TOKEN`.
+
+| Command | Purpose |
+|---------|---------|
+| `zox` | Embedded server + TUI/REPL |
+| `zox --url http://127.0.0.1:8787 --token …` | Attach TUI to an existing server |
+| `zox serve` | Headless server (prints token and URL on stderr) |
+| `zox agent run <workspace> <task>` | One-shot task; exits non-zero if the prompt is blocked |
+| `zox export session <id>` | Export a session (`--include-memory` optional) |
+| `zox hooks trust` | Trust this project’s hooks |
+| `zox eval run` | Fixture evals (default: mock tasks) |
+| `zox eval private` | Hidden-grader private suite |
+| `zox eval swe-lite` | SWE-bench Lite subset (Docker) |
+| `zox eval terminal-bench` | Terminal-Bench 2.0 (Docker) |
+| `zox eval archive` | Archive last eval artifacts |
+
+## `zox serve`
+
+Headless server for CI, remote machines, or a second TUI.
+
+```sh
+zox serve --port 8787 --sandbox worktree
+```
+
+Stderr prints the token (if generated) and `http://127.0.0.1:<port>`. Bind is loopback.
+
+## `zox agent run`
+
+One-shot: create a session, send `<task>`, wait, exit.
+
+```sh
+zox agent run /path/to/repo "Add a --dry-run flag to the CLI"
+zox agent run . "Fix the failing test" --model openai/gpt-4.1 --auto-approve
+```
+
+Exit code **1** if the prompt is **denied** by the guardrail (or equivalent block). `--auto-approve` approves **tools**, not Jev prompt `ask`.
+
+## `zox export session`
+
+```sh
+zox export session <sessionId>
+zox export session <sessionId> --include-memory
+```
+
+Exports are redaction-aware; do not assume secrets never appear in raw transcripts you copy by hand.
+
+## `zox hooks trust`
+
+Project hooks only run if the project is **trusted**.
+
+```sh
+zox hooks trust --workspace .
+```
+
+## Global flags
+
+| Flag | Type | Notes |
+|------|------|--------|
+| `--model` | string | `provider/model` |
+| `--agent` | string | e.g. `build`, `plan` |
+| `--workspace` | path | Session root |
+| `--sandbox` | enum | `host` `worktree` `container` `remote` |
+| `--url` | URL | Skip embed; attach |
+| `--token` | string | Bearer for server |
+| `--port` | number | Default **8787** |
+| `--session` | id | Resume |
+| `--no-tui` | bool | REPL |
+| `--include-memory` | bool | Export |
+| `--keep-worktree` | bool | Agent-run lifecycle |
+| `--auto-approve` | bool | Tool permissions only |
+| `--max-turns` | number | Eval / agent-run |
+| `--timeout-ms` | number | Eval |
+
+## Eval and benchmark flags
+
+These apply to eval subcommands (see [Evals](/docs/evals)):
+
+| Flag | Type | Notes |
+|------|------|--------|
+| `--limit` | number | Bench subset size |
+| `--k` / `--n-attempts` | number | Trial count |
+| `--skip-eval` | bool | SWE-lite: write predictions only |
+| `--instance-id` | string | Repeatable; SWE-lite |
+| `--task` | string | Repeatable; Terminal-Bench |
+| `--jobs-dir` | path | Terminal-Bench jobs |
+
+## In-session slash commands
+
+Built-in: `/help` `/model` `/agent` `/compact` `/context` `/usage` `/clear` `/mcp` `/skill` `/skills` `/cancel` `/sandbox` `/trace` `/remember` `/revert` `/exit`
+
+Details: [Slash commands](/docs/slash-commands).
+
+Project-defined commands: `.zox/commands/<name>.md` (see `examples/commands/explain.md` in the repo).

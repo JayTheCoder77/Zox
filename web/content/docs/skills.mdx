@@ -1,0 +1,47 @@
+---
+title: Skills
+description: SKILL.md playbooks the model can load.
+---
+
+# Skills
+
+Skills are Markdown playbooks (`SKILL.md`) the model can load.
+
+## Discovery order
+
+1. `.zox/skills/<name>/SKILL.md`
+2. `~/.config/zox/skills/<name>/SKILL.md`
+3. `skills.loadPaths[]`
+
+## Frontmatter
+
+```yaml
+---
+name: commit-helper
+description: Conventional commits from diffs
+---
+```
+
+## Activation
+
+- `/skill commit-helper` — inject into session `activeSkills`.
+- Model **`skill`** tool with `name`.
+- **`skills.autoLoad`** on session start.
+
+Example project snippet:
+
+```json
+{
+  "skills": {
+    "autoLoad": ["commit-helper"]
+  }
+}
+```
+
+See `spec/skills.md` in the repo for catalog / unload / persist details (some Phase 1.5 items may still be in progress; check tests).
+
+## Related
+
+- [Slash commands](/docs/slash-commands) — `/skill`, `/skills`
+- [Tools](/docs/tools) — `skill` tool
+- [Configuration](/docs/configuration) — `skills.*` keys

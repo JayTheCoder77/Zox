@@ -1,0 +1,37 @@
+---
+title: Hooks
+description: Policy hooks in .zox/hooks.json and user config.
+---
+
+# Hooks
+
+Policy without forking the harness. **Format is Zox-only:** `.zox/hooks.json` and optional `~/.config/zox/hooks.json`. Project hooks require **trust**:
+
+```sh
+zox hooks trust --workspace .
+```
+
+Examples in the repo: `examples/hooks/` (`guard-destructive.sh`, `account-tokens.sh`, prior-state / reinject scripts).
+
+Jev runs **before** `UserPromptSubmit` so hooks see prompts the user (or ask-flow) already allowed.
+
+## Events (MVP eight)
+
+| Event | When | Can block? |
+|-------|------|------------|
+| `SessionStart` | Create/resume | Inject only |
+| `UserPromptSubmit` | After Jev (if any), user message accepted | Yes |
+| `PreToolUse` | Before tool | Yes |
+| `PostToolUse` | After tool | No |
+| `PreCompact` | Before compaction | Yes |
+| `PostCompact` | After compaction | No |
+| `Stop` | Model wants to end | Yes |
+| `SessionEnd` | Close | No (auto-summarize memory) |
+
+Command hooks: JSON on stdin, JSON on stdout (`decision`: `allow` | `deny` | `ask`). Exit **2** = deny. Other failures typically warn and continue.
+
+## Related
+
+- [Permissions](/docs/permissions) — hook order in the tool pipeline
+- [Prompt guardrail](/docs/prompt-guardrail) — runs before `UserPromptSubmit`
+- [Troubleshooting](/docs/troubleshooting) — hooks not running

@@ -1,0 +1,44 @@
+---
+title: Observability
+description: OpenTelemetry spans, Prometheus metrics, and /trace.
+---
+
+# Observability
+
+`packages/observability` provides:
+
+- OpenTelemetry GenAI-style spans (session → turn → model.call / tool.execute / hooks / compaction / judge).
+- Prometheus metrics (including judge call counts and latency).
+- **`recordContent` default false** — do not put full prompts in spans unless you opt in.
+
+## Config
+
+```json
+{
+  "observability": {
+    "enabled": true,
+    "serviceName": "zox",
+    "recordContent": false,
+    "otlp": {
+      "endpoint": "http://127.0.0.1:4318/v1/traces"
+    }
+  }
+}
+```
+
+Env: `ZOXX_OBSERVABILITY` — `0` disables metrics path in server listen.
+
+## In session
+
+`/trace` prints the last trace id for support.
+
+Redaction helpers strip common key patterns from logs (`OPENAI_API_KEY=…`, `ZOXX_SERVER_TOKEN=…`, etc.). Still: never paste production traces into public issues without review.
+
+<Callout kind="warning">
+Redaction is best-effort. Set `observability.recordContent: false`. Do not commit `.env` or paste keys into `/remember`.
+</Callout>
+
+## Related
+
+- [Configuration](/docs/configuration) — `observability.*`
+- [Troubleshooting](/docs/troubleshooting) — secrets in logs

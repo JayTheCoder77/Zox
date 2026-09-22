@@ -1,0 +1,84 @@
+---
+title: Configuration
+description: User and project JSON config merge order and keys.
+---
+
+# Configuration
+
+Zox merges JSON configs (**later wins**):
+
+1. `~/.config/zox/config.json` (user)
+2. `<workspace>/.zox/config.json` (project)
+3. Env overlay (for example `ZOXX_MEMORY_AUTO_SUMMARIZE`)
+
+Loaded by `loadZoxConfig` (`packages/config/src/load.ts`). Deep-merge objects. Unknown keys at the **root** of the schema may be stripped or rejected depending on Zod object mode; **`judge` is `strictObject`** — extra keys inside `judge` fail parse.
+
+## Minimal project config
+
+```json
+{
+  "model": "anthropic/claude-sonnet-4-20250514",
+  "agent": "build",
+  "sandbox": { "mode": "worktree" }
+}
+```
+
+<Callout kind="warning">
+**Secrets:** never put raw API keys in config or the session DB. Point at **env var names** (`apiKeyEnv`). Config can interpolate `${MY_VAR}` in MCP env blocks.
+</Callout>
+
+## Schema map (optional keys)
+
+From `packages/config/src/schema.ts`:
+
+| Key | Purpose |
+|-----|---------|
+| `model` | Default `provider/id` |
+| `agent` | Default profile |
+| `instructions.files` | Extra instruction files for context |
+| `sandbox.mode` | `host` / `worktree` / `container` / `remote` |
+| `sandbox.worktree.cleanup` | `keep` / `remove` |
+| `sandbox.envAllowlist` | Env vars allowed into tool processes |
+| `sandbox.network.allowHosts` | Network allowlist |
+| `context.windowTokens` | Context window size |
+| `context.overflowThreshold` | Fraction that triggers overflow handling |
+| `context.prune.*` | Optional prune policy |
+| `budget.preCompactTokenThreshold` | Soft compact trigger |
+| `budget.maxTurns` | Stop after N turns |
+| `budget.maxUsdPerTask` | Spend cap |
+| `memory.autoSummarize` | Default **on**; SessionEnd → `.zox/memory/auto/` |
+| `memory.summarizeModel` | Model used for summaries |
+| `memory.startupInjectCount` | How many memories at start |
+| `memory.rollingSummary` | Rolling summary flag |
+| `memory.autoInject` | Extra inject paths |
+| `tools.webfetch.maxBytes` / `allowedHosts` | Web fetch limits |
+| `skills.autoLoad` | Skill names loaded at start |
+| `skills.loadPaths` | Extra skill directories |
+| `skills.catalog*` | Catalog injection limits |
+| `mcp.servers` | Stdio MCP map |
+| `index.embeddings.apiKeyEnv` | Parsed, **ignored** (no dense embeddings yet) |
+| `providers` | Extra / override provider specs |
+| `judge` | Jev prompt guardrail |
+| `observability` | OTel / metrics / `recordContent` |
+
+## Environment variables
+
+| Variable | Role |
+|----------|------|
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY` / `GEMINI_API_KEY` / `GROQ_API_KEY` / `OPENROUTER_API_KEY` | Provider keys |
+| `ZOXX_SERVER_TOKEN` | Shared secret for HTTP (`zox serve` / attach) |
+| `ZOXX_MEMORY_AUTO_SUMMARIZE` | `0`/`false` disables; `1`/`true` enables |
+| `ZOXX_OBSERVABILITY` | `0` disables metrics path in server listen |
+| `TYPESAFE_API_KEY` | Jev (or `judge.apiKeyEnv`) |
+
+Note the **double X** in `ZOXX_*`.
+
+## Richer example
+
+See docs.md §13.3 for MCP, budget, memory, and observability blocks in one project file.
+
+## Related
+
+- [Models and BYOK](/docs/models)
+- [MCP](/docs/mcp)
+- [Skills](/docs/skills)

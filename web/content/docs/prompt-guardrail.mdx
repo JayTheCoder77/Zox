@@ -1,0 +1,56 @@
+---
+title: Prompt guardrail
+description: Optional TypeSafe Jev review of human prompts.
+---
+
+# Prompt guardrail
+
+Package: `@zox/judge`. Optional **TypeSafe Jev** review runs on **human** prompts (not subagent `task` prompts). **Off by default.**
+
+## Enable
+
+Set `TYPESAFE_API_KEY` (or `judge.apiKeyEnv`) and:
+
+```json
+{
+  "judge": {
+    "enabled": true
+  }
+}
+```
+
+## Outcomes
+
+- **allow** — continue
+- **ask** — you must confirm; **`--auto-approve` does not skip this**
+- **deny** — no model call
+
+Jev (TypeSafe System One) answers structured **noul** questions:
+
+- **injection** — override system / tools / sandbox / hooks.
+- **policy_violation** — user request vs the policy string (secret leak, crime, disable sandbox, …).
+
+Scores `P(yes)` + `confidence` map to bands (defaults in `packages/judge/src/defaults.ts`):
+
+| Band | Default idea |
+|------|----------------|
+| deny | high yes **and** high confidence |
+| ask | medium yes **and** medium confidence |
+| allow | otherwise |
+
+Tune with `judge.prompt.injection` / `policyViolation` (`denyMinYes`, `denyMinConfidence`, `askMinYes`, `askMinConfidence`).
+
+## Fail-open
+
+<Callout kind="warning">
+If the key is missing or Jev errors (timeout default 2500ms, network, invalid JSON), the turn **continues** and the UI shows a skip warning (`outcome: skipped`). Prompts truncated to `maxPromptChars` (default 8000).
+</Callout>
+
+**Subagents:** `task` turns set `skipJudge` so model-written prompts are not treated as user injection.
+
+Events: `prompt.guardrail`, `prompt.blocked`, `prompt.permission_required`. Eval runner answers prompt-ask with **approved: false** (does not silently continue).
+
+## Related
+
+- [Permissions](/docs/permissions) — prompt vs tool permission
+- [Configuration](/docs/configuration) — `judge` strict schema

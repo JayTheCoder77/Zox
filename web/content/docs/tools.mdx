@@ -1,0 +1,39 @@
+---
+title: Tools
+description: Built-in tools the model can call under policy.
+---
+
+# Tools
+
+Registered in `packages/tools` (`createBuiltinTools`). MCP tools appear as namespaced entries (e.g. `mcp_<server>_<tool>`).
+
+| Tool | Role |
+|------|------|
+| `read` | File + optional line range |
+| `write` | Create / overwrite |
+| `edit` | Search-replace / patch-style |
+| `bash` | Shell, cwd = sandbox root |
+| `grep` | Ripgrep-style search |
+| `glob` | Filename patterns |
+| `ls` | Directory listing |
+| `webfetch` | HTTP GET with size / host limits |
+| `todowrite` | Full plan list rewrite (plan memory) |
+| `skill` | Load a `SKILL.md` body |
+| `memory_write` / `memory_search` | Durable memory |
+| `code_search` | Repo search / index (BM25/FTS5; dense embeddings deferred) |
+| `task` | Subagent turn (**skips Jev**; model-written prompt) |
+
+## Execution pipeline
+
+For mutating / subprocess tools:
+
+**permission → verification/budget → PreToolUse → sandbox → implementation → PostToolUse → truncate observation for context.**
+
+Tool stdout is capped so a single `grep` cannot blow the window.
+
+## Related
+
+- [Permissions](/docs/permissions)
+- [Sandbox](/docs/sandbox)
+- [Hooks](/docs/hooks) — PreToolUse / PostToolUse
+- [MCP](/docs/mcp) — extra tools via MCP servers

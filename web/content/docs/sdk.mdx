@@ -1,0 +1,85 @@
+---
+title: Server, OpenAPI, and SDK
+description: zox serve, HTTP contract, and @zox/sdk from the monorepo.
+---
+
+# Server, OpenAPI, and SDK
+
+## Server
+
+`zox serve` runs a headless Hono app (`packages/server`) for CI, remote machines, or a second TUI.
+
+```sh
+zox serve --port 8787 --sandbox worktree
+```
+
+Stderr prints the token (if generated) and `http://127.0.0.1:<port>`. Bind is loopback. Auth: `Authorization: Bearer <token>` (`ZOXX_SERVER_TOKEN` or generated token).
+
+Representative routes (`spec/clients.md`):
+
+| Method | Path |
+|--------|------|
+| POST | `/sessions` |
+| GET | `/sessions/{id}` |
+| POST | `/sessions/{id}/messages` |
+| POST | `/sessions/{id}/cancel` |
+| GET | `/sessions/{id}/events` (SSE) |
+| WS | `/sessions/{id}/ws` |
+| POST | `/sessions/{id}/permissions/{requestId}` |
+| GET | `/models` |
+| GET | `/usage` |
+| GET/PUT | `/config` (redacted) |
+| POST/DELETE | `/mcp/servers` |
+
+Contract file: [packages/server/openapi/openapi.yaml](https://github.com/JayTheCoder77/Zox/blob/main/packages/server/openapi/openapi.yaml).
+
+Attach the TUI to a running server:
+
+```sh
+zox --url http://127.0.0.1:8787 --token "$ZOXX_SERVER_TOKEN"
+```
+
+## SDK
+
+**`@zox/sdk` is not published to npm** (only `zox-code` is). Use it from a clone of this repo (`bun install` in the monorepo), or call the HTTP/WebSocket API documented in `openapi.yaml` while `zox serve` (or an embedded session) is running.
+
+Example from docs.md §21 (shortened):
+
+```ts
+import { createZoxClient } from "@zox/sdk";
+
+const client = createZoxClient({
+  baseUrl: "http://127.0.0.1:8787",
+  token: process.env.ZOXX_SERVER_TOKEN!,
+  // transport: "sse" | "ws"
+});
+
+const session = await client.sessions.create({
+  workspaceRoot: "/path/to/app",
+  agent: "build",
+  model: "openai/gpt-4.1",
+});
+
+const run = session.send("Refactor the auth module");
+
+run.onTool(async (event) => {
+  if (
+    event.type === "tool.permission_required" ||
+    event.type === "prompt.permission_required"
+  ) {
+    await run.respondPermission(event.requestId, {
+      approved: event.type === "tool.permission_required",
+    });
+  }
+});
+
+await run.waitForIdle();
+```
+
+`onTool` fires for `tool.started`, `tool.permission_required`, and `prompt.permission_required`.
+
+## Related
+
+- [CLI reference](/docs/cli) — `zox serve`, `--url`, `--token`
+- [Architecture](/docs/architecture)
+- [Permissions](/docs/permissions) — `respondPermission`

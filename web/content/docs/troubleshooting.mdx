@@ -1,0 +1,52 @@
+---
+title: Troubleshooting
+description: Common install and runtime issues from the Zox guide.
+---
+
+# Troubleshooting
+
+From docs.md §25. Report new issues on [GitHub](https://github.com/JayTheCoder77/Zox/issues).
+
+## `zox: command not found` after `bun add -g zox-code`
+
+Ensure Bun’s global bin directory is on your `PATH` (`bun pm bin -g`). Or skip a global install: `bunx zox-code …`.
+
+## Nothing useful happens / echo-only replies
+
+You are on `mock/echo`. Set a provider key and `--model`. See [Models and BYOK](/docs/models).
+
+## Edits not in my editor
+
+Default worktree. Open `.zox/worktrees/...` or restart with `--sandbox host`. See [Sandbox](/docs/sandbox).
+
+## Permission forever / hung `awaiting_permission`
+
+Approve in TUI, or SDK `respondPermission`. `--auto-approve` for tools only. Headless eval will not approve prompt-level ask. See [Permissions](/docs/permissions).
+
+## `zox --url` fails
+
+Need `--token` or `ZOXX_SERVER_TOKEN`. Server must still be running (`zox serve`). See [Server, OpenAPI, and SDK](/docs/sdk).
+
+## Hooks not running
+
+Trust the project: `zox hooks trust`. Check `.zox/hooks.json` schema. Command hooks must print JSON. See [Hooks](/docs/hooks).
+
+## Jev never blocks
+
+`judge.enabled` is false by default. If enabled but you see skip warnings, the API key or network failed (fail-open). See [Prompt guardrail](/docs/prompt-guardrail).
+
+## MCP tools missing
+
+Server process must have the command on PATH (`bunx`, `npx`, binaries). Env interpolation only fills `${VAR}` from the environment. See [MCP](/docs/mcp).
+
+## `bun run lint` nested Biome config
+
+Can happen with extra roots (for example leftover `.zox/worktrees`). Lint the packages you care about or clean worktrees.
+
+## Typecheck / tests
+
+Always `bun install` after pulling so workspace packages like `@zox/judge` link.
+
+## Secrets in logs
+
+Redaction is best-effort. Set `observability.recordContent: false`. Do not commit `.env` or paste keys into `/remember`. See [Observability](/docs/observability).
