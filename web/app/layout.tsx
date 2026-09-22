@@ -13,12 +13,27 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://zox.dev"), // or your real domain
   title: {
     default: "zox",
     template: "%s · zox",
   },
   description:
     "Local coding agent harness with permissions, sandboxing, sessions, and observability. BYOK.",
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+  },
+  openGraph: {
+    title: "zox",
+    description:
+      "Local coding agent harness. Permissions, sandboxing, sessions. BYOK.",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
