@@ -188,8 +188,7 @@ async function runCommandHook(
     stdout: "pipe",
     stderr: "pipe",
   });
-  proc.stdin.write(JSON.stringify(input));
-  proc.stdin.end();
+  writeHookStdin(proc.stdin, JSON.stringify(input));
 
   const timedOut = await Promise.race([
     proc.exited.then(() => false),
@@ -307,6 +306,31 @@ function matchValueFrom(input: HookInput): string {
   if (input.matcher) return input.matcher;
   if (input.tool?.name) return input.tool.name;
   return input.event;
+}
+
+function writeHookStdin(
+  stdin: { write(data: string): void; end(): void },
+  payload: string,
+): void {
+  try {
+    stdin.write(payload);
+  } catch (error) {
+    if (!isBrokenPipe(error)) throw error;
+  }
+  try {
+    stdin.end();
+  } catch (error) {
+    if (!isBrokenPipe(error)) throw error;
+  }
+}
+
+function isBrokenPipe(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code: string }).code === "EPIPE"
+  );
 }
 
 function parseHeaders(value: unknown): Record<string, string> | undefined {

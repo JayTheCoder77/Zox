@@ -6,9 +6,9 @@ It is **not** a hosted chat product. You bring your own API keys (BYOK). The age
 
 This README is for people who have never used an agent harness. The long-form reference is **[docs.md](./docs.md)**. The internal product spec is **[spec/](./spec/)**.
 
-## Install (npm)
+## Install
 
-The published package name is **`zox-code`**. It requires [Bun](https://bun.sh) ≥ 1.2.
+The CLI is published on npm as **[`zox-code`](https://www.npmjs.com/package/zox-code)**. It requires [Bun](https://bun.sh) ≥ 1.2 (the bundle runs as `#!/usr/bin/env bun`).
 
 ```sh
 bun add -g zox-code
@@ -16,7 +16,7 @@ bun add -g zox-code
 bunx zox-code --model openai/gpt-4.1
 ```
 
-That installs two bins: `zox` and `zox-code` (same CLI). Then:
+That installs two bins: `zox` and `zox-code` (same entry). Then:
 
 ```sh
 export OPENAI_API_KEY=sk-...   # or ANTHROPIC_API_KEY, GOOGLE_API_KEY, …
@@ -24,7 +24,11 @@ cd /path/to/your/project
 zox --model openai/gpt-4.1
 ```
 
-Maintainers publish with `bun run publish:cli` (`bun publish` from `packages/zox-code` after bundling).
+You can also pin a version: `bun add -g zox-code@0.1.3`. Package details and keywords: [npm](https://www.npmjs.com/package/zox-code).
+
+**Programmatic client:** the typed **`@zox/sdk`** package is developed in this monorepo and is not published to npm yet. Use `zox serve` plus the [OpenAPI contract](./packages/server/openapi/openapi.yaml), or clone this repo and depend on `@zox/sdk` from the workspace (see [docs.md](./docs.md) §21).
+
+**Contributors** building from source: see [Develop this repo](#develop-this-repo) below.
 
 ---
 
@@ -34,7 +38,7 @@ Maintainers publish with `bun run publish:cli` (`bun publish` from `packages/zox
 |---------|------------|
 | **`zox`** | Interactive terminal session (TUI if you have a TTY, otherwise a line REPL) |
 | **`zox serve`** | Headless HTTP + SSE/WebSocket server |
-| **`@zox/sdk`** | Typed client for scripts and other UIs |
+| **`@zox/sdk`** | Typed client for scripts and other UIs (monorepo / `zox serve`; not on npm yet) |
 | **Tools** | `read`, `write`, `edit`, `bash`, `grep`, `glob`, `ls`, `webfetch`, `todowrite`, `skill`, `memory_*`, `code_search`, `task` |
 | **Safety** | Permission prompts, git **worktree** sandbox by default, path jail, hook policy |
 | **Extensibility** | MCP servers, user skills, slash commands, `.zox/hooks.json` |
@@ -71,32 +75,11 @@ You (TUI / REPL / SDK)
 
 ## Prerequisites
 
-- **[Bun](https://bun.sh)** 1.x (install, test, and run everything with Bun — not npm/pnpm in this repo).
-- A **git** checkout if you want the default **worktree** sandbox.
+- **[Bun](https://bun.sh)** ≥ 1.2 to run the published CLI (`zox-code` declares `engines.bun`).
+- A **git** repo as your workspace if you want the default **worktree** sandbox (non-git projects fall back to `host` with a warning unless configured otherwise).
 - An API key for at least one provider (or use `mock/echo` to smoke-test without a bill).
 
-Clone and install:
-
-```sh
-git clone <this-repo>
-cd Zox
-bun install
-```
-
-Useful scripts from the repo root:
-
-```sh
-bun run zox          # start an interactive session in this workspace
-bun test             # unit/integration tests
-bun run lint
-bun run typecheck
-```
-
-`bun run zox` is `bun packages/cli/src/index.ts`. Extra args go after `--`:
-
-```sh
-bun run zox -- --model anthropic/claude-sonnet-4-20250514 --sandbox host
-```
+You do **not** need to clone this repository to use Zox day to day—install **`zox-code`** from npm and point it at your project with `--workspace` (default: current directory).
 
 ---
 
@@ -124,15 +107,12 @@ If you set **no** keys, you still have the built-in **`mock/echo`** provider (go
 
 ```sh
 cd /path/to/your/project
-# from the Zox repo, or after you add the CLI to PATH
-bun /path/to/Zox/packages/cli/src/index.ts --workspace "$(pwd)" --model anthropic/claude-sonnet-4-20250514
+zox --model anthropic/claude-sonnet-4-20250514
+# one-shot without a global install:
+bunx zox-code --model anthropic/claude-sonnet-4-20250514
 ```
 
-From inside the Zox repo, targeting this repo as the workspace:
-
-```sh
-bun run zox -- --model anthropic/claude-sonnet-4-20250514
-```
+Optional project defaults in `.zox/config.json` (model, agent, sandbox) are picked up automatically when you create a session.
 
 - On a real terminal you get the **Ink TUI**.
 - Piped / non-TTY sessions fall back to a **line REPL**.
@@ -153,7 +133,7 @@ Type a normal English task. Slash commands start with `/` (see below). Writes an
 To edit the files you already have open in your editor:
 
 ```sh
-bun run zox -- --sandbox host
+zox --sandbox host
 ```
 
 ---
@@ -242,12 +222,32 @@ Outcomes: **allow** (continue), **ask** (you must confirm; `--auto-approve` does
 
 ## Develop this repo
 
-This is a **Bun workspace** monorepo (`packages/*`). Publish the CLI with:
+Clone this repository if you are hacking on Zox or using **`@zox/sdk`** from source:
+
+```sh
+git clone https://github.com/JayTheCoder77/Zox.git
+cd Zox
+bun install
+```
+
+Run the CLI from TypeScript (same behavior as the npm bundle before release):
+
+```sh
+bun run zox -- --model anthropic/claude-sonnet-4-20250514
+# equivalent: bun packages/cli/src/index.ts [flags]
+bun test
+bun run lint
+bun run typecheck
+```
+
+Publish a new **`zox-code`** version to npm:
 
 ```sh
 bun run build:cli
-bun run publish:cli
+bun run publish:cli   # bumps via packages/zox-code/package.json, then bun publish
 ```
+
+This is a **Bun workspace** monorepo (`packages/*`).
 
 | Package | Role |
 |---------|------|
@@ -274,4 +274,4 @@ Conventions: TypeScript, Biome, `bun test`. Clients should depend on **contracts
 
 ## Status
 
-Phase 1 MVP is landed (interactive harness, BYOK, tools, MCP, skills, worktree sandbox, hooks, OTel). Later phases add more skill-catalog polish, container/remote sandbox adapters, and extra clients. Treat `spec/phases.md` as the roadmap, and this repo’s tests as the source of truth for what actually runs today.
+The **`zox-code`** CLI on npm tracks releases from this repo (see `packages/zox-code/package.json` for the current version). The harness includes interactive TUI/REPL, BYOK providers, tools, MCP, skills, worktree sandbox, hooks, eval commands, and OTel. For roadmap intent see **`spec/phases.md`**; for what actually runs in your build, prefer **`bun test`** when developing from source.

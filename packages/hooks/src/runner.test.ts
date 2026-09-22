@@ -32,9 +32,24 @@ function hooksFile(command: string, matcher = "bash"): HooksFile {
 }
 
 describe("runHooks", () => {
+  test("hook that exits before reading stdin does not throw EPIPE", async () => {
+    const command = await writeScript(
+      `#!/bin/sh\nprintf '{"decision":"allow"}\\n'\n`,
+    );
+    const result = await runHooks({
+      files: [hooksFile(command)],
+      event: "PreToolUse",
+      input: input(),
+      matchValue: "bash",
+      trusted: true,
+      cwd: process.cwd(),
+    });
+    expect(result.decision).toBe("allow");
+  });
+
   test("PreToolUse matcher bash denies when command prints deny JSON", async () => {
     const command = await writeScript(
-      `#!/bin/sh\nprintf '{"decision":"deny"}\\n'\n`,
+      `#!/bin/sh\ncat >/dev/null\nprintf '{"decision":"deny"}\\n'\n`,
     );
     const result = await runHooks({
       files: [hooksFile(command)],

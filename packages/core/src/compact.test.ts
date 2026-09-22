@@ -28,8 +28,14 @@ describe("compactSessionTurn", () => {
     const root = await mkdtemp(join(tmpdir(), "zox-compact-"));
     const pre = join(root, "pre.sh");
     const post = join(root, "post.sh");
-    await Bun.write(pre, `#!/bin/sh\nprintf '{"decision":"allow"}\\n'`);
-    await Bun.write(post, `#!/bin/sh\nprintf '{"decision":"allow"}\\n'`);
+    await Bun.write(
+      pre,
+      `#!/bin/sh\ncat >/dev/null\nprintf '{"decision":"allow"}\\n'`,
+    );
+    await Bun.write(
+      post,
+      `#!/bin/sh\ncat >/dev/null\nprintf '{"decision":"allow"}\\n'`,
+    );
     await chmod(pre, 0o755);
     await chmod(post, 0o755);
 
@@ -90,11 +96,11 @@ describe("compactSessionTurn", () => {
     const manualHook = join(root, "manual.sh");
     await Bun.write(
       autoHook,
-      `#!/bin/sh\ntouch "${autoFile}"\nprintf '{"decision":"allow"}\\n'`,
+      `#!/bin/sh\ncat >/dev/null\ntouch "${autoFile}"\nprintf '{"decision":"allow"}\\n'`,
     );
     await Bun.write(
       manualHook,
-      `#!/bin/sh\ntouch "${manualFile}"\nprintf '{"decision":"allow"}\\n'`,
+      `#!/bin/sh\ncat >/dev/null\ntouch "${manualFile}"\nprintf '{"decision":"allow"}\\n'`,
     );
     await chmod(autoHook, 0o755);
     await chmod(manualHook, 0o755);
